@@ -1,0 +1,16 @@
+services:
+  jt-regime-chart:
+    build:
+      context: .
+    container_name: jt-regime-chart
+    ports:
+      - "8088:8088"
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8088"
+      WECOM_PATH: "/wecom-notify"
+      WECOM_APP: "bull-monitor"
+    volumes:
+      - .:/app
+      - /Volumes/samsung_disk_2T/openclaw_workspace/docker-cron/shared/wecom-notify:/wecom-notify:ro
+    restart: unless-stopped

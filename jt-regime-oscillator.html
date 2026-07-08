@@ -1,0 +1,1446 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JT Regime Oscillator</title>
+  <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101216;
+      --panel: #171a20;
+      --panel-2: #1f232b;
+      --border: #2c323c;
+      --text: #ecedf0;
+      --muted: #9ba3af;
+      --green: #00b050;
+      --red: #ff3b30;
+      --blue: #4e8cff;
+      --orange: #ff9f0a;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 270px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    aside {
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      min-width: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 36px;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .mark {
+      width: 30px;
+      height: 30px;
+      border-radius: 7px;
+      background: conic-gradient(from 160deg, #00b050, #4e8cff, #ff9f0a, #00b050);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.22);
+      flex: 0 0 auto;
+    }
+
+    .section-title {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      text-transform: uppercase;
+    }
+
+    .symbol-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .order-controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .symbol-editor {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 72px;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    button,
+    select,
+    input {
+      font: inherit;
+    }
+
+    .symbol-button {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 10px 11px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      min-height: 40px;
+    }
+
+    .symbol-button:hover,
+    .symbol-button.active {
+      border-color: var(--blue);
+      background: #253146;
+    }
+
+    .small-button {
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      border-radius: 6px;
+      min-height: 36px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .small-button:hover:not(:disabled) {
+      border-color: var(--blue);
+    }
+
+    .small-button:disabled {
+      cursor: not-allowed;
+      color: #5f6673;
+      opacity: .7;
+    }
+
+    #testNotifyButton {
+      width: 100%;
+      margin-top: 10px;
+    }
+
+    .danger-button {
+      width: 100%;
+      margin-top: 8px;
+      color: #ffb4ae;
+    }
+
+    .danger-button:hover:not(:disabled) {
+      border-color: var(--red);
+    }
+
+    .notify-list {
+      display: grid;
+      gap: 7px;
+      margin-top: 10px;
+      max-height: 180px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .notify-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      min-height: 36px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--panel-2);
+      padding: 7px 9px;
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .notify-row.active {
+      border-color: var(--blue);
+      background: #253146;
+    }
+
+    .notify-row input {
+      width: 18px;
+      height: 18px;
+      min-height: 0;
+      margin: 0;
+      accent-color: var(--blue);
+      cursor: pointer;
+    }
+
+    .module-status {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      min-height: 18px;
+      overflow-wrap: anywhere;
+    }
+
+    .exchange {
+      color: var(--muted);
+      font-size: 12px;
+      margin-left: 8px;
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      min-width: 0;
+    }
+
+    select,
+    input {
+      width: 100%;
+      min-width: 0;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 8px 9px;
+      min-height: 36px;
+      outline: none;
+    }
+
+    select:focus,
+    input:focus {
+      border-color: var(--blue);
+    }
+
+    .run-button {
+      border: 1px solid #5f8fff;
+      background: var(--blue);
+      color: white;
+      border-radius: 6px;
+      min-height: 40px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .run-button:hover {
+      filter: brightness(1.08);
+    }
+
+    main {
+      min-width: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .topbar {
+      height: 58px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 18px;
+      background: #12151a;
+      min-width: 0;
+    }
+
+    .headline {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .status.error {
+      color: #ffb4ae;
+    }
+
+    .charts {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: minmax(300px, 62fr) minmax(180px, 38fr);
+    }
+
+    .chart-pane {
+      position: relative;
+      min-height: 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .chart-label {
+      position: absolute;
+      left: 14px;
+      top: 10px;
+      z-index: 2;
+      color: var(--muted);
+      font-size: 12px;
+      pointer-events: none;
+      background: rgba(16, 18, 22, .75);
+      padding: 3px 6px;
+      border-radius: 5px;
+    }
+
+    #priceChart,
+    #oscChart {
+      width: 100%;
+      height: 100%;
+    }
+
+    .mobile-controls {
+      display: none;
+    }
+
+    @media (max-width: 780px) {
+      .app {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto minmax(0, 1fr);
+      }
+
+      aside {
+        border-right: 0;
+        border-bottom: 1px solid var(--border);
+        padding: 12px;
+      }
+
+      .symbol-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .order-controls {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .topbar {
+        height: auto;
+        min-height: 54px;
+        align-items: flex-start;
+        padding: 11px 12px;
+        flex-direction: column;
+      }
+
+      .headline {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+      }
+
+      h1 {
+        white-space: normal;
+      }
+
+      .status {
+        white-space: normal;
+      }
+
+      .charts {
+        height: 72vh;
+        grid-template-rows: minmax(260px, 60fr) minmax(180px, 40fr);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <div class="brand">
+        <div class="mark" aria-hidden="true"></div>
+        <span>JT Regime Oscillator</span>
+      </div>
+
+      <section>
+        <p class="section-title">代币对</p>
+        <div class="symbol-list" id="symbolList"></div>
+        <div class="symbol-editor">
+          <input id="symbolInput" type="text" placeholder="例如 OPUSDT">
+          <button class="small-button" id="addSymbolButton" type="button">添加</button>
+        </div>
+        <div class="order-controls">
+          <button class="small-button" id="moveUpButton" type="button">上移</button>
+          <button class="small-button" id="moveDownButton" type="button">下移</button>
+        </div>
+        <button class="small-button danger-button" id="deleteSymbolButton" type="button">删除当前币对</button>
+      </section>
+
+      <section>
+        <p class="section-title">图表参数</p>
+        <div class="field-grid">
+          <label>
+            周期
+            <select id="interval">
+              <option value="1m">1min</option>
+              <option value="5m">5min</option>
+              <option value="15m">15min</option>
+              <option value="1h" selected>1H</option>
+              <option value="4h">4H</option>
+              <option value="1d">1D</option>
+              <option value="1w">1W</option>
+            </select>
+          </label>
+          <label>
+            K线数量
+            <input id="limit" type="number" min="120" max="1000" step="20" value="500">
+          </label>
+          <label>
+            Lag Start
+            <input id="momStart" type="number" min="2" max="50" step="1" value="2">
+          </label>
+          <label>
+            Lag End
+            <input id="momEnd" type="number" min="3" max="200" step="1" value="52">
+          </label>
+          <label>
+            Z窗口
+            <input id="zLength" type="number" min="10" max="200" step="1" value="52">
+          </label>
+          <label>
+            极端阈值
+            <input id="extThresh" type="number" min="0.5" max="5" step="0.1" value="2.0">
+          </label>
+          <label>
+            平滑
+            <input id="smoothLen" type="number" min="1" max="80" step="1" value="8">
+          </label>
+          <label>
+            数据源
+            <select id="marketType">
+              <option value="spot" selected>Binance Spot</option>
+              <option value="futures">Binance USDT-M</option>
+            </select>
+          </label>
+          <label>
+            自动刷新
+            <select id="refreshInterval">
+              <option value="0" selected>关闭</option>
+              <option value="15">15秒</option>
+              <option value="30">30秒</option>
+              <option value="60">60秒</option>
+              <option value="300">5分钟</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section>
+        <p class="section-title">通知模块</p>
+        <div class="field-grid">
+          <label>
+            发送通道
+            <select id="notifyChannel">
+              <option value="wecom" selected>企业微信</option>
+            </select>
+          </label>
+        </div>
+        <div class="notify-list" id="notifyList"></div>
+        <button class="small-button" id="testNotifyButton" type="button">测试当前币对通知</button>
+        <div class="module-status" id="notifyStatus">仅在新的试探抄底信号出现时发送</div>
+      </section>
+
+      <button class="run-button" id="reloadButton">重新加载</button>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div class="headline">
+          <h1 id="title">BTCUSDT</h1>
+          <div class="meta" id="meta">1H · Binance Spot · JT Regime Oscillator</div>
+        </div>
+        <div class="status" id="status">准备加载</div>
+      </header>
+
+      <section class="charts">
+        <div class="chart-pane">
+          <div class="chart-label">价格 K 线</div>
+          <div id="priceChart"></div>
+        </div>
+        <div class="chart-pane">
+          <div class="chart-label">Regime Score</div>
+          <div id="oscChart"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const STORAGE_KEYS = {
+      symbolOrder: "jt-regime-symbol-order",
+      marketType: "jt-regime-market-type",
+      refreshInterval: "jt-regime-refresh-interval",
+      symbolNotifications: "jt-regime-symbol-notifications",
+      seenTrialMarkers: "jt-regime-seen-trial-markers"
+    };
+
+    const DEFAULT_SYMBOLS = [
+      "BTCUSDT",
+      "ETHUSDT",
+      "SOLUSDT",
+      "BNBUSDT",
+      "XRPUSDT",
+      "DOGEUSDT",
+      "PENDLEUSDT",
+      "MONUSDT"
+    ];
+
+    const DATA_SOURCES = {
+      spot: {
+        label: "Binance Spot",
+        shortLabel: "Spot",
+        url: (params) => `https://data-api.binance.vision/api/v3/klines?${params.toString()}`
+      },
+      futures: {
+        label: "Binance USDT-M",
+        shortLabel: "USDT-M",
+        url: (params) => `https://fapi.binance.com/fapi/v1/klines?${params.toString()}`
+      }
+    };
+
+    const state = {
+      symbol: "",
+      symbols: loadSymbolOrder(),
+      priceChart: null,
+      oscChart: null,
+      candleSeries: null,
+      oscSeries: null,
+      zeroLine: null,
+      resizeObserver: null,
+      refreshTimer: null,
+      isLoading: false,
+      initializedSeenSettingsKeys: new Set(),
+      seenTrialMarkers: loadSeenTrialMarkers(),
+      symbolNotifications: loadSymbolNotificationSettings(),
+      notificationStatus: ""
+    };
+
+    const els = {
+      priceChart: document.getElementById("priceChart"),
+      oscChart: document.getElementById("oscChart"),
+      symbolList: document.getElementById("symbolList"),
+      symbolInput: document.getElementById("symbolInput"),
+      addSymbolButton: document.getElementById("addSymbolButton"),
+      deleteSymbolButton: document.getElementById("deleteSymbolButton"),
+      interval: document.getElementById("interval"),
+      limit: document.getElementById("limit"),
+      marketType: document.getElementById("marketType"),
+      refreshInterval: document.getElementById("refreshInterval"),
+      notifyList: document.getElementById("notifyList"),
+      notifyChannel: document.getElementById("notifyChannel"),
+      testNotifyButton: document.getElementById("testNotifyButton"),
+      notifyStatus: document.getElementById("notifyStatus"),
+      momStart: document.getElementById("momStart"),
+      momEnd: document.getElementById("momEnd"),
+      zLength: document.getElementById("zLength"),
+      extThresh: document.getElementById("extThresh"),
+      smoothLen: document.getElementById("smoothLen"),
+      reloadButton: document.getElementById("reloadButton"),
+      moveUpButton: document.getElementById("moveUpButton"),
+      moveDownButton: document.getElementById("moveDownButton"),
+      title: document.getElementById("title"),
+      meta: document.getElementById("meta"),
+      status: document.getElementById("status")
+    };
+
+    const utc8AxisFormatter = new Intl.DateTimeFormat("zh-CN", {
+      timeZone: "Asia/Shanghai",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    });
+
+    const utc8TooltipFormatter = new Intl.DateTimeFormat("zh-CN", {
+      timeZone: "Asia/Shanghai",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    });
+
+    function unixSecondsFromChartTime(time) {
+      if (typeof time === "number") return time;
+      if (typeof time === "string") return Math.floor(Date.parse(time) / 1000);
+      return Math.floor(Date.UTC(time.year, time.month - 1, time.day) / 1000);
+    }
+
+    function formatUtc8ChartTime(time, includeYear = false) {
+      const seconds = unixSecondsFromChartTime(time);
+      const formatter = includeYear ? utc8TooltipFormatter : utc8AxisFormatter;
+      return formatter.format(new Date(seconds * 1000)).replace(/\//g, "-");
+    }
+
+    function loadSymbolOrder() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEYS.symbolOrder);
+        if (!raw) return DEFAULT_SYMBOLS.slice();
+
+        const saved = JSON.parse(raw);
+        if (!Array.isArray(saved)) return DEFAULT_SYMBOLS.slice();
+
+        const normalized = saved
+          .map((symbol) => String(symbol).trim().toUpperCase())
+          .filter((symbol) => /^[A-Z0-9]+$/.test(symbol));
+
+        const unique = Array.from(new Set(normalized));
+        return unique.length > 0 ? unique : DEFAULT_SYMBOLS.slice();
+      } catch {
+        return DEFAULT_SYMBOLS.slice();
+      }
+    }
+
+    function saveSymbolOrder() {
+      localStorage.setItem(STORAGE_KEYS.symbolOrder, JSON.stringify(state.symbols));
+    }
+
+    function loadSavedMarketType() {
+      const saved = localStorage.getItem(STORAGE_KEYS.marketType);
+      if (saved && DATA_SOURCES[saved]) {
+        els.marketType.value = saved;
+      }
+    }
+
+    function saveMarketType() {
+      localStorage.setItem(STORAGE_KEYS.marketType, els.marketType.value);
+    }
+
+    function loadSavedRefreshInterval() {
+      const saved = localStorage.getItem(STORAGE_KEYS.refreshInterval);
+      if (saved && Array.from(els.refreshInterval.options).some((option) => option.value === saved)) {
+        els.refreshInterval.value = saved;
+      }
+    }
+
+    function saveRefreshInterval() {
+      localStorage.setItem(STORAGE_KEYS.refreshInterval, els.refreshInterval.value);
+    }
+
+    function loadSeenTrialMarkers() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS.seenTrialMarkers) || "[]");
+        if (!Array.isArray(saved)) return new Set();
+        return new Set(saved.filter((item) => typeof item === "string"));
+      } catch {
+        return new Set();
+      }
+    }
+
+    function saveSeenTrialMarkers() {
+      const values = Array.from(state.seenTrialMarkers).slice(-500);
+      state.seenTrialMarkers = new Set(values);
+      localStorage.setItem(STORAGE_KEYS.seenTrialMarkers, JSON.stringify(values));
+    }
+
+    function loadSymbolNotificationSettings() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS.symbolNotifications) || "{}");
+        return saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
+      } catch {
+        return {};
+      }
+    }
+
+    function saveSymbolNotificationSettings() {
+      localStorage.setItem(STORAGE_KEYS.symbolNotifications, JSON.stringify(state.symbolNotifications));
+    }
+
+    function markerKey(marker, settings, symbol = state.symbol) {
+      return [
+        settings.marketType,
+        symbol,
+        settings.interval,
+        marker.time,
+        marker.text
+      ].join(":");
+    }
+
+    function settingsKey(settings, symbol = state.symbol) {
+      return [
+        settings.marketType,
+        symbol,
+        settings.interval,
+        settings.momStart,
+        settings.momEnd,
+        settings.zLength,
+        settings.extThresh,
+        settings.smoothLen
+      ].join(":");
+    }
+
+    function getRefreshSeconds() {
+      const seconds = Number(els.refreshInterval.value);
+      return Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+    }
+
+    function clearAutoRefresh() {
+      if (state.refreshTimer) {
+        window.clearTimeout(state.refreshTimer);
+        state.refreshTimer = null;
+      }
+    }
+
+    function scheduleAutoRefresh() {
+      clearAutoRefresh();
+      const seconds = getRefreshSeconds();
+      if (seconds <= 0) return;
+
+      state.refreshTimer = window.setTimeout(() => {
+        loadChart({ reason: "auto" });
+      }, seconds * 1000);
+    }
+
+    function currentDataSource() {
+      return DATA_SOURCES[els.marketType.value] || DATA_SOURCES.spot;
+    }
+
+    function renderSymbolList() {
+      const dataSource = currentDataSource();
+
+      els.symbolList.innerHTML = state.symbols.map((symbol) => {
+        const activeClass = symbol === state.symbol ? " active" : "";
+        return `<button class="symbol-button${activeClass}" data-symbol="${symbol}" type="button"><span>${symbol}</span><span class="exchange">${dataSource.shortLabel}</span></button>`;
+      }).join("");
+
+      syncOrderButtons();
+      NotificationModule.syncControls();
+    }
+
+    function syncOrderButtons() {
+      const index = state.symbols.indexOf(state.symbol);
+      els.moveUpButton.disabled = index <= 0;
+      els.moveDownButton.disabled = index < 0 || index >= state.symbols.length - 1;
+      els.deleteSymbolButton.disabled = state.symbols.length <= 1 || index < 0;
+    }
+
+    function setActiveSymbol(symbol, shouldLoad = true) {
+      if (!state.symbols.includes(symbol)) return;
+      state.symbol = symbol;
+      state.notificationStatus = "";
+      renderSymbolList();
+      NotificationModule.setStatus("仅在新的试探抄底信号出现时发送");
+      if (shouldLoad) loadChart();
+    }
+
+    function normalizeSymbolInput(value) {
+      return String(value).trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    }
+
+    function addSymbol() {
+      const symbol = normalizeSymbolInput(els.symbolInput.value);
+      if (!symbol) {
+        NotificationModule.setStatus("请输入要添加的币对", true);
+        return;
+      }
+
+      if (!/^[A-Z0-9]{3,30}$/.test(symbol)) {
+        NotificationModule.setStatus("币对格式不正确，只支持 3-30 位大写字母和数字", true);
+        return;
+      }
+
+      if (!state.symbols.includes(symbol)) {
+        state.symbols.push(symbol);
+        saveSymbolOrder();
+      }
+
+      els.symbolInput.value = "";
+      setActiveSymbol(symbol);
+      NotificationModule.setStatus(`${symbol} 已添加`);
+    }
+
+    function deleteActiveSymbol() {
+      if (state.symbols.length <= 1) {
+        NotificationModule.setStatus("至少保留一个币对", true);
+        return;
+      }
+
+      const index = state.symbols.indexOf(state.symbol);
+      if (index < 0) return;
+
+      const removed = state.symbol;
+      const nextSymbols = state.symbols.filter((symbol) => symbol !== removed);
+      state.symbols = nextSymbols.length > 0 ? nextSymbols : DEFAULT_SYMBOLS.slice();
+      saveSymbolOrder();
+
+      delete state.symbolNotifications[removed];
+      saveSymbolNotificationSettings();
+
+      const nextIndex = Math.min(index, state.symbols.length - 1);
+      setActiveSymbol(state.symbols[nextIndex]);
+      NotificationModule.setStatus(`${removed} 已删除`);
+    }
+
+    function moveActiveSymbol(direction) {
+      const index = state.symbols.indexOf(state.symbol);
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= state.symbols.length) return;
+
+      const nextSymbols = state.symbols.slice();
+      const [symbol] = nextSymbols.splice(index, 1);
+      nextSymbols.splice(nextIndex, 0, symbol);
+      state.symbols = nextSymbols;
+      saveSymbolOrder();
+      renderSymbolList();
+    }
+
+    const chartOptions = {
+      layout: {
+        background: { color: "#101216" },
+        textColor: "#c9d1d9",
+        fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+      },
+      grid: {
+        vertLines: { color: "#20252d" },
+        horzLines: { color: "#20252d" }
+      },
+      crosshair: {
+        mode: LightweightCharts.CrosshairMode.Normal
+      },
+      rightPriceScale: {
+        borderColor: "#2c323c"
+      },
+      localization: {
+        locale: "zh-CN",
+        timeFormatter: (time) => formatUtc8ChartTime(time, true)
+      },
+      timeScale: {
+        borderColor: "#2c323c",
+        timeVisible: true,
+        secondsVisible: false,
+        tickMarkFormatter: (time) => formatUtc8ChartTime(time)
+      }
+    };
+
+    function createCharts() {
+      state.priceChart = LightweightCharts.createChart(els.priceChart, {
+        ...chartOptions,
+        width: els.priceChart.clientWidth,
+        height: els.priceChart.clientHeight
+      });
+
+      state.oscChart = LightweightCharts.createChart(els.oscChart, {
+        ...chartOptions,
+        width: els.oscChart.clientWidth,
+        height: els.oscChart.clientHeight,
+        rightPriceScale: {
+          borderColor: "#2c323c",
+          scaleMargins: { top: 0.12, bottom: 0.12 }
+        }
+      });
+
+      state.candleSeries = state.priceChart.addCandlestickSeries({
+        upColor: "#00b050",
+        downColor: "#ff3b30",
+        borderUpColor: "#00b050",
+        borderDownColor: "#ff3b30",
+        wickUpColor: "#00b050",
+        wickDownColor: "#ff3b30"
+      });
+
+      state.oscSeries = state.oscChart.addHistogramSeries({
+        priceFormat: { type: "price", precision: 2, minMove: 0.01 },
+        base: 0
+      });
+
+      state.zeroLine = state.oscSeries.createPriceLine({
+        price: 0,
+        color: "#7c8491",
+        lineWidth: 1,
+        lineStyle: LightweightCharts.LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: "Zero"
+      });
+
+      syncVisibleRanges();
+
+      state.resizeObserver = new ResizeObserver(() => {
+        state.priceChart.applyOptions({
+          width: els.priceChart.clientWidth,
+          height: els.priceChart.clientHeight
+        });
+        state.oscChart.applyOptions({
+          width: els.oscChart.clientWidth,
+          height: els.oscChart.clientHeight
+        });
+      });
+
+      state.resizeObserver.observe(els.priceChart);
+      state.resizeObserver.observe(els.oscChart);
+    }
+
+    function syncVisibleRanges() {
+      let changingPrice = false;
+      let changingOsc = false;
+
+      state.priceChart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+        if (changingOsc || !range) return;
+        changingPrice = true;
+        state.oscChart.timeScale().setVisibleLogicalRange(range);
+        changingPrice = false;
+      });
+
+      state.oscChart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+        if (changingPrice || !range) return;
+        changingOsc = true;
+        state.priceChart.timeScale().setVisibleLogicalRange(range);
+        changingOsc = false;
+      });
+    }
+
+    function setStatus(message, isError = false) {
+      els.status.textContent = message;
+      els.status.classList.toggle("error", isError);
+    }
+
+    function getNumberInput(el, fallback) {
+      const value = Number(el.value);
+      return Number.isFinite(value) ? value : fallback;
+    }
+
+    function getSettings() {
+      return {
+        interval: els.interval.value,
+        limit: Math.max(120, Math.min(1000, getNumberInput(els.limit, 500))),
+        marketType: els.marketType.value,
+        momStart: Math.max(2, Math.floor(getNumberInput(els.momStart, 2))),
+        momEnd: Math.max(3, Math.floor(getNumberInput(els.momEnd, 52))),
+        zLength: Math.max(10, Math.floor(getNumberInput(els.zLength, 52))),
+        extThresh: getNumberInput(els.extThresh, 2),
+        smoothLen: Math.max(1, Math.floor(getNumberInput(els.smoothLen, 8)))
+      };
+    }
+
+    function apiUrl(symbol, settings) {
+      const params = new URLSearchParams({
+        symbol,
+        interval: settings.interval,
+        limit: String(settings.limit)
+      });
+
+      return (DATA_SOURCES[settings.marketType] || DATA_SOURCES.spot).url(params);
+    }
+
+    function decimalPlaces(value) {
+      const text = String(value);
+      const [, decimal = ""] = text.split(".");
+      return decimal.length;
+    }
+
+    function inferPricePrecision(rows) {
+      const maxPrecision = rows.reduce((max, row) => {
+        const rowPrecision = Math.max(
+          decimalPlaces(row[1]),
+          decimalPlaces(row[2]),
+          decimalPlaces(row[3]),
+          decimalPlaces(row[4])
+        );
+        return Math.max(max, rowPrecision);
+      }, 0);
+
+      return Math.min(Math.max(maxPrecision, 0), 12);
+    }
+
+    function minMoveFromPrecision(precision) {
+      return Number(`1e-${precision}`);
+    }
+
+    function applyPricePrecision(candles) {
+      const precision = candles.pricePrecision ?? 2;
+      state.candleSeries.applyOptions({
+        priceFormat: {
+          type: "price",
+          precision,
+          minMove: minMoveFromPrecision(precision)
+        }
+      });
+    }
+
+    async function fetchCandles(symbol, settings) {
+      const response = await fetch(apiUrl(symbol, settings));
+      if (!response.ok) {
+        throw new Error(`行情接口返回 ${response.status}`);
+      }
+
+      const rows = await response.json();
+      if (!Array.isArray(rows) || rows.length === 0) {
+        throw new Error("行情接口没有返回 K 线数据");
+      }
+
+      const candles = rows.map((row) => ({
+        time: Math.floor(row[0] / 1000),
+        open: Number(row[1]),
+        high: Number(row[2]),
+        low: Number(row[3]),
+        close: Number(row[4])
+      }));
+
+      candles.pricePrecision = inferPricePrecision(rows);
+      return candles;
+    }
+
+    function sma(values, length, index) {
+      if (index < length - 1) return null;
+      let sum = 0;
+      for (let i = index - length + 1; i <= index; i++) {
+        if (values[i] == null || !Number.isFinite(values[i])) return null;
+        sum += values[i];
+      }
+      return sum / length;
+    }
+
+    function stdev(values, length, index) {
+      const mean = sma(values, length, index);
+      if (mean == null) return null;
+
+      let sumSq = 0;
+      for (let i = index - length + 1; i <= index; i++) {
+        if (values[i] == null || !Number.isFinite(values[i])) return null;
+        const delta = values[i] - mean;
+        sumSq += delta * delta;
+      }
+
+      return Math.sqrt(sumSq / length);
+    }
+
+    function zscore(values, length, index) {
+      const mean = sma(values, length, index);
+      const sd = stdev(values, length, index);
+      if (mean == null || sd == null || sd === 0) return 0;
+      return (values[index] - mean) / sd;
+    }
+
+    function wma(values, length, index) {
+      if (index < length - 1) return null;
+
+      let weighted = 0;
+      let weightSum = 0;
+
+      for (let offset = 0; offset < length; offset++) {
+        const value = values[index - offset];
+        if (value == null || !Number.isFinite(value)) return null;
+        const weight = length - offset;
+        weighted += value * weight;
+        weightSum += weight;
+      }
+
+      return weighted / weightSum;
+    }
+
+    function calculateJTRegimeOscillator(candles, settings) {
+      const closes = candles.map((candle) => candle.close);
+      const ret1 = new Array(candles.length).fill(null);
+      const retMom = new Array(candles.length).fill(null);
+      const rawScore = new Array(candles.length).fill(null);
+      const output = [];
+
+      for (let i = 0; i < candles.length; i++) {
+        if (i >= settings.zLength + settings.momEnd) {
+          ret1[i] = (closes[i] - closes[i - 1]) / closes[i - 1];
+          retMom[i] = (closes[i - (settings.momStart - 1)] - closes[i - settings.momEnd]) / closes[i - settings.momEnd];
+        }
+
+        const z1 = zscore(ret1, settings.zLength, i);
+        const zMom = zscore(retMom, settings.zLength, i);
+        const isExtremeUp = z1 > settings.extThresh;
+        const isExtremeDown = z1 < -settings.extThresh;
+        const shortTermFactor = isExtremeUp || isExtremeDown ? -z1 : z1;
+
+        rawScore[i] = zMom + shortTermFactor;
+        const score = wma(rawScore, settings.smoothLen, i);
+        const previous = output.length > 0 ? output[output.length - 1].value : null;
+        const color = getHistogramColor(score, previous);
+
+        if (score != null) {
+          output.push({
+            index: i,
+            time: candles[i].time,
+            value: score,
+            color,
+            close: candles[i].close,
+            high: candles[i].high,
+            low: candles[i].low,
+            z1,
+            zMom,
+            isExtremeUp,
+            isExtremeDown
+          });
+        }
+      }
+
+      return output;
+    }
+
+    function buildBottomMarkers(oscillator, candles) {
+      const markers = [];
+      const recentExtremeLookback = 12;
+      const breakoutLookback = 5;
+      const markerCooldown = 8;
+      let lastMarkerIndex = -Infinity;
+
+      for (let i = 2; i < oscillator.length; i++) {
+        const current = oscillator[i];
+        const prev = oscillator[i - 1];
+        const prev2 = oscillator[i - 2];
+
+        const recentExtremeDown = oscillator
+          .slice(Math.max(0, i - recentExtremeLookback), i + 1)
+          .some((item) => item.isExtremeDown);
+
+        if (!recentExtremeDown) continue;
+
+        const stillBelowZero = current.value < 0;
+        const crossedAboveZero = prev.value <= 0 && current.value > 0;
+        const firstTurnUp = prev.value <= prev2.value && current.value > prev.value;
+        const candleIndex = current.index;
+        const from = Math.max(0, candleIndex - breakoutLookback);
+        const priorHigh = Math.max(...candles.slice(from, candleIndex).map((candle) => candle.high));
+        const reclaimedShortStructure = Number.isFinite(priorHigh) && current.close > priorHigh;
+
+        if (crossedAboveZero && reclaimedShortStructure) {
+          markers.push({
+            time: current.time,
+            position: "belowBar",
+            color: "#4e8cff",
+            shape: "arrowUp",
+            text: "确认抄底",
+            score: current.value,
+            close: current.close
+          });
+          lastMarkerIndex = i;
+          continue;
+        }
+
+        if (stillBelowZero && firstTurnUp && i - lastMarkerIndex >= markerCooldown) {
+          markers.push({
+            time: current.time,
+            position: "belowBar",
+            color: "#ffcc00",
+            shape: "arrowUp",
+            text: "试探抄底",
+            score: current.value,
+            close: current.close
+          });
+          lastMarkerIndex = i;
+        }
+      }
+
+      return markers;
+    }
+
+    function latestMarkerSummary(markers) {
+      if (markers.length === 0) return "当前无抄底标记";
+      const latest = markers[markers.length - 1];
+      return `最近 ${latest.text} ${formatUtc8ChartTime(latest.time, true)}`;
+    }
+
+    const NotificationModule = {
+      channelName: "企业微信",
+      signalName: "试探抄底",
+
+      isEnabledForSymbol(symbol = state.symbol) {
+        return state.symbolNotifications[symbol] !== "off";
+      },
+
+      setEnabledForSymbol(symbol, enabled) {
+        state.symbolNotifications[symbol] = enabled ? "on" : "off";
+        saveSymbolNotificationSettings();
+      },
+
+      syncControls() {
+        if (!els.notifyList) return;
+
+        els.notifyList.innerHTML = state.symbols.map((symbol) => {
+          const checked = this.isEnabledForSymbol(symbol) ? " checked" : "";
+          const activeClass = symbol === state.symbol ? " active" : "";
+          return `<label class="notify-row${activeClass}"><span>${symbol}</span><input type="checkbox" data-notify-symbol="${symbol}"${checked}></label>`;
+        }).join("");
+      },
+
+      setStatus(message, isError = false) {
+        if (!els.notifyStatus) return;
+        els.notifyStatus.textContent = message;
+        els.notifyStatus.style.color = isError ? "#ffb4ae" : "";
+      },
+
+      markerMessage(marker, settings, candles, symbol = state.symbol) {
+        const marketName = (DATA_SOURCES[settings.marketType] || DATA_SOURCES.spot).label;
+        const score = typeof marker.score === "number" ? marker.score.toFixed(2) : "n/a";
+        const close = typeof marker.close === "number" ? marker.close : candles[candles.length - 1]?.close;
+        const closeText = close == null ? "n/a" : String(close);
+
+        return [
+          "🟡 JT 抄底信号",
+          "",
+          `信号: ${this.signalName}`,
+          `币对: ${symbol}`,
+          `数据源: ${marketName}`,
+          `周期: ${settings.interval.toUpperCase()}`,
+          `信号时间: ${formatUtc8ChartTime(marker.time, true)} UTC+8`,
+          `信号收盘价: ${closeText}`,
+          `Regime Score: ${score}`,
+          "",
+          "规则: 极端下跌后，Regime Score 在 0 轴下方首次拐头。",
+          "提醒: 这是试探信号，不是确认买点。"
+        ].join("\n");
+      },
+
+      testMessage(settings) {
+        const marketName = (DATA_SOURCES[settings.marketType] || DATA_SOURCES.spot).label;
+        return [
+          "🧪 JT 抄底信号通知测试",
+          "",
+          `币对: ${state.symbol}`,
+          `数据源: ${marketName}`,
+          `周期: ${settings.interval.toUpperCase()}`,
+          `测试时间: ${formatUtc8ChartTime(Math.floor(Date.now() / 1000), true)} UTC+8`,
+          "",
+          "这是一条测试消息，用于验证企微通知通道。"
+        ].join("\n");
+      },
+
+      async send(message) {
+        const response = await fetch("/api/wecom/notify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message })
+        });
+
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) {
+          throw new Error(result.error || `企微接口返回 ${response.status}`);
+        }
+      },
+
+      async testCurrentSymbol() {
+        const settings = getSettings();
+        this.setStatus("正在发送测试通知...");
+        els.testNotifyButton.disabled = true;
+        try {
+          await this.send(this.testMessage(settings));
+          this.setStatus(`测试通知已发送：${state.symbol}`);
+        } catch (error) {
+          this.setStatus(`测试通知失败: ${error instanceof Error ? error.message : "未知错误"}`, true);
+        } finally {
+          els.testNotifyButton.disabled = false;
+        }
+      },
+
+      async processTrialBottomSignal(markers, settings, candles, symbol = state.symbol) {
+        const trialMarkers = markers.filter((marker) => marker.text === this.signalName);
+        const currentSettingsKey = settingsKey(settings, symbol);
+
+        if (!state.initializedSeenSettingsKeys.has(currentSettingsKey)) {
+          trialMarkers.forEach((marker) => state.seenTrialMarkers.add(markerKey(marker, settings, symbol)));
+          state.initializedSeenSettingsKeys.add(currentSettingsKey);
+          if (symbol === state.symbol) {
+            state.notificationStatus = "";
+          }
+          saveSeenTrialMarkers();
+          return;
+        }
+
+        if (!this.isEnabledForSymbol(symbol)) return;
+
+        const newMarkers = trialMarkers.filter((marker) => !state.seenTrialMarkers.has(markerKey(marker, settings, symbol)));
+        if (newMarkers.length === 0) return;
+
+        for (const marker of newMarkers) {
+          const key = markerKey(marker, settings, symbol);
+          try {
+            await this.send(this.markerMessage(marker, settings, candles, symbol));
+            state.seenTrialMarkers.add(key);
+            state.notificationStatus = ` · 企微已通知 ${symbol} ${formatUtc8ChartTime(marker.time, true)}`;
+            this.setStatus(`已发送 ${symbol} ${this.signalName}`);
+          } catch (error) {
+            state.notificationStatus = ` · 企微通知失败: ${error instanceof Error ? error.message : "未知错误"}`;
+            this.setStatus(state.notificationStatus.replace(/^ · /, ""), true);
+            break;
+          }
+        }
+
+        saveSeenTrialMarkers();
+      },
+
+      async processEnabledSymbols(settings, activeSymbol) {
+        const symbols = state.symbols.filter((symbol) => (
+          symbol !== activeSymbol &&
+          this.isEnabledForSymbol(symbol)
+        ));
+
+        for (const symbol of symbols) {
+          try {
+            const candles = await fetchCandles(symbol, settings);
+            const oscillator = calculateJTRegimeOscillator(candles, settings);
+            const bottomMarkers = buildBottomMarkers(oscillator, candles);
+            await this.processTrialBottomSignal(bottomMarkers, settings, candles, symbol);
+          } catch (error) {
+            state.notificationStatus = ` · ${symbol} 通知检查失败: ${error instanceof Error ? error.message : "未知错误"}`;
+            this.setStatus(state.notificationStatus.replace(/^ · /, ""), true);
+            break;
+          }
+        }
+      }
+    };
+
+    function getHistogramColor(score, previous) {
+      if (score == null) return "#7c8491";
+      if (score >= 0) {
+        return previous != null && score > previous ? "rgba(0, 176, 80, 0.82)" : "rgba(0, 176, 80, 0.42)";
+      }
+      return previous != null && score < previous ? "rgba(255, 59, 48, 0.82)" : "rgba(255, 59, 48, 0.42)";
+    }
+
+    function updateHeader(settings) {
+      const marketName = (DATA_SOURCES[settings.marketType] || DATA_SOURCES.spot).label;
+      els.title.textContent = state.symbol;
+      els.meta.textContent = `${settings.interval.toUpperCase()} · ${marketName} · mom ${settings.momStart}-${settings.momEnd} · z ${settings.zLength}`;
+    }
+
+    function refreshLabel() {
+      const seconds = getRefreshSeconds();
+      return seconds > 0 ? ` · 自动刷新 ${seconds}秒` : "";
+    }
+
+    async function loadChart() {
+      if (state.isLoading) return;
+      state.isLoading = true;
+      clearAutoRefresh();
+
+      const settings = getSettings();
+      if (settings.momStart >= settings.momEnd) {
+        setStatus("Lag Start 必须小于 Lag End", true);
+        state.isLoading = false;
+        scheduleAutoRefresh();
+        return;
+      }
+
+      updateHeader(settings);
+      setStatus("加载行情中...");
+
+      try {
+        const candles = await fetchCandles(state.symbol, settings);
+        const oscillator = calculateJTRegimeOscillator(candles, settings);
+        const bottomMarkers = buildBottomMarkers(oscillator, candles);
+
+        applyPricePrecision(candles);
+        state.candleSeries.setData(candles);
+        state.candleSeries.setMarkers(bottomMarkers);
+        state.oscSeries.setData(oscillator.map((item) => ({
+          time: item.time,
+          value: item.value,
+          color: item.color
+        })));
+
+        state.priceChart.timeScale().fitContent();
+        state.oscChart.timeScale().fitContent();
+
+        const latest = oscillator[oscillator.length - 1];
+        const latestScore = latest ? latest.value.toFixed(2) : "n/a";
+        const warning = latest?.isExtremeUp ? " · 短期过热" : latest?.isExtremeDown ? " · 短期恐慌" : "";
+        await NotificationModule.processTrialBottomSignal(bottomMarkers, settings, candles, state.symbol);
+        await NotificationModule.processEnabledSymbols(settings, state.symbol);
+        setStatus(`${candles.length} 根 K 线 · 最新 Regime ${latestScore} · 抄底标记 ${bottomMarkers.length} · ${latestMarkerSummary(bottomMarkers)}${warning}${refreshLabel()}${state.notificationStatus}`);
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : "加载失败", true);
+      } finally {
+        state.isLoading = false;
+        scheduleAutoRefresh();
+      }
+    }
+
+    els.symbolList.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-symbol]");
+      if (!button) return;
+
+      setActiveSymbol(button.dataset.symbol);
+    });
+
+    els.moveUpButton.addEventListener("click", () => moveActiveSymbol(-1));
+    els.moveDownButton.addEventListener("click", () => moveActiveSymbol(1));
+    els.addSymbolButton.addEventListener("click", addSymbol);
+    els.deleteSymbolButton.addEventListener("click", deleteActiveSymbol);
+    els.symbolInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        addSymbol();
+      }
+    });
+    els.reloadButton.addEventListener("click", loadChart);
+    els.interval.addEventListener("change", loadChart);
+    els.marketType.addEventListener("change", () => {
+      saveMarketType();
+      renderSymbolList();
+      loadChart();
+    });
+    els.refreshInterval.addEventListener("change", () => {
+      saveRefreshInterval();
+      loadChart();
+    });
+    els.notifyList.addEventListener("change", (event) => {
+      const checkbox = event.target.closest("input[data-notify-symbol]");
+      if (!checkbox) return;
+
+      const symbol = checkbox.dataset.notifySymbol;
+      NotificationModule.setEnabledForSymbol(symbol, checkbox.checked);
+      NotificationModule.syncControls();
+      NotificationModule.setStatus(`${symbol} 通知已${checkbox.checked ? "开启" : "关闭"}`);
+    });
+    els.testNotifyButton.addEventListener("click", () => {
+      NotificationModule.testCurrentSymbol();
+    });
+
+    loadSavedMarketType();
+    loadSavedRefreshInterval();
+    state.symbol = state.symbols[0] || DEFAULT_SYMBOLS[0];
+    renderSymbolList();
+    createCharts();
+    loadChart();
+  </script>
+</body>
+</html>
