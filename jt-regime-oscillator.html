@@ -140,7 +140,8 @@
       opacity: .7;
     }
 
-    #testNotifyButton {
+    #testNotifyButton,
+    #syncMonitorButton {
       width: 100%;
       margin-top: 10px;
     }
@@ -339,15 +340,45 @@
     }
 
     @media (max-width: 780px) {
+      body {
+        min-height: 100dvh;
+      }
+
       .app {
         grid-template-columns: 1fr;
         grid-template-rows: auto minmax(0, 1fr);
+        min-height: 100dvh;
       }
 
       aside {
         border-right: 0;
         border-bottom: 1px solid var(--border);
-        padding: 12px;
+        padding: max(10px, env(safe-area-inset-top)) 12px 10px;
+        gap: 12px;
+      }
+
+      .brand {
+        justify-content: space-between;
+      }
+
+      .brand-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .mobile-controls {
+        display: block;
+        min-width: 88px;
+        min-height: 44px;
+        padding: 0 12px;
+        flex: 0 0 auto;
+      }
+
+      aside:not(.settings-open) > section,
+      aside:not(.settings-open) > .run-button {
+        display: none;
       }
 
       .symbol-list {
@@ -362,27 +393,85 @@
         height: auto;
         min-height: 54px;
         align-items: flex-start;
-        padding: 11px 12px;
+        padding: 10px 12px;
         flex-direction: column;
+        gap: 4px;
       }
 
       .headline {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 2px;
+        width: 100%;
+        justify-content: space-between;
+        gap: 8px;
       }
 
       h1 {
-        white-space: normal;
+        font-size: 17px;
+      }
+
+      .meta {
+        text-align: right;
       }
 
       .status {
         white-space: normal;
+        overflow-wrap: anywhere;
       }
 
       .charts {
-        height: 72vh;
-        grid-template-rows: minmax(260px, 60fr) minmax(180px, 40fr);
+        height: max(520px, calc(100dvh - 121px - env(safe-area-inset-top)));
+        grid-template-rows: minmax(300px, 60fr) minmax(200px, 40fr);
+      }
+
+      .small-button,
+      .run-button,
+      select,
+      input,
+      .symbol-button {
+        min-height: 44px;
+      }
+
+      .notify-row {
+        min-height: 44px;
+      }
+
+      .run-button {
+        position: sticky;
+        bottom: max(8px, env(safe-area-inset-bottom));
+        z-index: 5;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
+      }
+    }
+
+    @media (max-width: 420px) {
+      .mark {
+        width: 28px;
+        height: 28px;
+      }
+
+      .brand {
+        font-size: 14px;
+      }
+
+      .mobile-controls {
+        min-width: 82px;
+      }
+
+      .headline {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+      }
+
+      .meta {
+        font-size: 12px;
+      }
+
+      .field-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .charts {
+        height: max(500px, calc(100dvh - 119px - env(safe-area-inset-top)));
+        grid-template-rows: minmax(280px, 58fr) minmax(200px, 42fr);
       }
     }
   </style>
@@ -391,8 +480,13 @@
   <div class="app">
     <aside>
       <div class="brand">
-        <div class="mark" aria-hidden="true"></div>
-        <span>JT Regime Oscillator</span>
+        <div class="brand-title">
+          <div class="mark" aria-hidden="true"></div>
+          <span>JT Regime Oscillator</span>
+        </div>
+        <button class="small-button mobile-controls" id="settingsToggle" type="button" aria-expanded="false">
+          展开设置
+        </button>
       </div>
 
       <section>
@@ -453,6 +547,10 @@
             <select id="marketType">
               <option value="spot" selected>Binance Spot</option>
               <option value="futures">Binance USDT-M</option>
+              <option value="bybitSpot">Bybit Spot</option>
+              <option value="bybitLinear">Bybit USDT Perp</option>
+              <option value="bitgetSpot">Bitget Spot</option>
+              <option value="bitgetFutures">Bitget USDT Perp</option>
             </select>
           </label>
           <label>
@@ -479,8 +577,10 @@
           </label>
         </div>
         <div class="notify-list" id="notifyList"></div>
+        <button class="small-button" id="syncMonitorButton" type="button">同步到后台</button>
         <button class="small-button" id="testNotifyButton" type="button">测试当前币对通知</button>
-        <div class="module-status" id="notifyStatus">仅在新的试探抄底信号出现时发送</div>
+        <div class="module-status" id="notifyStatus">正式通知由后台 Worker 发送</div>
+        <div class="module-status" id="workerStatus">后台状态加载中...</div>
       </section>
 
       <button class="run-button" id="reloadButton">重新加载</button>
@@ -513,8 +613,7 @@
       symbolOrder: "jt-regime-symbol-order",
       marketType: "jt-regime-market-type",
       refreshInterval: "jt-regime-refresh-interval",
-      symbolNotifications: "jt-regime-symbol-notifications",
-      seenTrialMarkers: "jt-regime-seen-trial-markers"
+      symbolNotifications: "jt-regime-symbol-notifications"
     };
 
     const DEFAULT_SYMBOLS = [
@@ -531,13 +630,27 @@
     const DATA_SOURCES = {
       spot: {
         label: "Binance Spot",
-        shortLabel: "Spot",
-        url: (params) => `https://data-api.binance.vision/api/v3/klines?${params.toString()}`
+        shortLabel: "Spot"
       },
       futures: {
         label: "Binance USDT-M",
-        shortLabel: "USDT-M",
-        url: (params) => `https://fapi.binance.com/fapi/v1/klines?${params.toString()}`
+        shortLabel: "USDT-M"
+      },
+      bybitSpot: {
+        label: "Bybit Spot",
+        shortLabel: "Bybit Spot"
+      },
+      bybitLinear: {
+        label: "Bybit USDT Perp",
+        shortLabel: "Bybit Perp"
+      },
+      bitgetSpot: {
+        label: "Bitget Spot",
+        shortLabel: "Bitget Spot"
+      },
+      bitgetFutures: {
+        label: "Bitget USDT Perp",
+        shortLabel: "Bitget Perp"
       }
     };
 
@@ -551,11 +664,9 @@
       zeroLine: null,
       resizeObserver: null,
       refreshTimer: null,
+      monitorStatusTimer: null,
       isLoading: false,
-      initializedSeenSettingsKeys: new Set(),
-      seenTrialMarkers: loadSeenTrialMarkers(),
-      symbolNotifications: loadSymbolNotificationSettings(),
-      notificationStatus: ""
+      symbolNotifications: loadSymbolNotificationSettings()
     };
 
     const els = {
@@ -571,8 +682,10 @@
       refreshInterval: document.getElementById("refreshInterval"),
       notifyList: document.getElementById("notifyList"),
       notifyChannel: document.getElementById("notifyChannel"),
+      syncMonitorButton: document.getElementById("syncMonitorButton"),
       testNotifyButton: document.getElementById("testNotifyButton"),
       notifyStatus: document.getElementById("notifyStatus"),
+      workerStatus: document.getElementById("workerStatus"),
       momStart: document.getElementById("momStart"),
       momEnd: document.getElementById("momEnd"),
       zLength: document.getElementById("zLength"),
@@ -583,7 +696,9 @@
       moveDownButton: document.getElementById("moveDownButton"),
       title: document.getElementById("title"),
       meta: document.getElementById("meta"),
-      status: document.getElementById("status")
+      status: document.getElementById("status"),
+      sidebar: document.querySelector("aside"),
+      settingsToggle: document.getElementById("settingsToggle")
     };
 
     const utc8AxisFormatter = new Intl.DateTimeFormat("zh-CN", {
@@ -662,22 +777,6 @@
       localStorage.setItem(STORAGE_KEYS.refreshInterval, els.refreshInterval.value);
     }
 
-    function loadSeenTrialMarkers() {
-      try {
-        const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS.seenTrialMarkers) || "[]");
-        if (!Array.isArray(saved)) return new Set();
-        return new Set(saved.filter((item) => typeof item === "string"));
-      } catch {
-        return new Set();
-      }
-    }
-
-    function saveSeenTrialMarkers() {
-      const values = Array.from(state.seenTrialMarkers).slice(-500);
-      state.seenTrialMarkers = new Set(values);
-      localStorage.setItem(STORAGE_KEYS.seenTrialMarkers, JSON.stringify(values));
-    }
-
     function loadSymbolNotificationSettings() {
       try {
         const saved = JSON.parse(localStorage.getItem(STORAGE_KEYS.symbolNotifications) || "{}");
@@ -689,29 +788,6 @@
 
     function saveSymbolNotificationSettings() {
       localStorage.setItem(STORAGE_KEYS.symbolNotifications, JSON.stringify(state.symbolNotifications));
-    }
-
-    function markerKey(marker, settings, symbol = state.symbol) {
-      return [
-        settings.marketType,
-        symbol,
-        settings.interval,
-        marker.time,
-        marker.text
-      ].join(":");
-    }
-
-    function settingsKey(settings, symbol = state.symbol) {
-      return [
-        settings.marketType,
-        symbol,
-        settings.interval,
-        settings.momStart,
-        settings.momEnd,
-        settings.zLength,
-        settings.extThresh,
-        settings.smoothLen
-      ].join(":");
     }
 
     function getRefreshSeconds() {
@@ -762,9 +838,8 @@
     function setActiveSymbol(symbol, shouldLoad = true) {
       if (!state.symbols.includes(symbol)) return;
       state.symbol = symbol;
-      state.notificationStatus = "";
       renderSymbolList();
-      NotificationModule.setStatus("仅在新的试探抄底信号出现时发送");
+      NotificationModule.setStatus("正式通知由后台 Worker 发送");
       if (shouldLoad) loadChart();
     }
 
@@ -958,12 +1033,13 @@
 
     function apiUrl(symbol, settings) {
       const params = new URLSearchParams({
+        source: settings.marketType,
         symbol,
         interval: settings.interval,
         limit: String(settings.limit)
       });
 
-      return (DATA_SOURCES[settings.marketType] || DATA_SOURCES.spot).url(params);
+      return `/api/market/klines?${params.toString()}`;
     }
 
     function decimalPlaces(value) {
@@ -1181,7 +1257,6 @@
 
     const NotificationModule = {
       channelName: "企业微信",
-      signalName: "试探抄底",
 
       isEnabledForSymbol(symbol = state.symbol) {
         return state.symbolNotifications[symbol] !== "off";
@@ -1206,28 +1281,6 @@
         if (!els.notifyStatus) return;
         els.notifyStatus.textContent = message;
         els.notifyStatus.style.color = isError ? "#ffb4ae" : "";
-      },
-
-      markerMessage(marker, settings, candles, symbol = state.symbol) {
-        const marketName = (DATA_SOURCES[settings.marketType] || DATA_SOURCES.spot).label;
-        const score = typeof marker.score === "number" ? marker.score.toFixed(2) : "n/a";
-        const close = typeof marker.close === "number" ? marker.close : candles[candles.length - 1]?.close;
-        const closeText = close == null ? "n/a" : String(close);
-
-        return [
-          "🟡 JT 抄底信号",
-          "",
-          `信号: ${this.signalName}`,
-          `币对: ${symbol}`,
-          `数据源: ${marketName}`,
-          `周期: ${settings.interval.toUpperCase()}`,
-          `信号时间: ${formatUtc8ChartTime(marker.time, true)} UTC+8`,
-          `信号收盘价: ${closeText}`,
-          `Regime Score: ${score}`,
-          "",
-          "规则: 极端下跌后，Regime Score 在 0 轴下方首次拐头。",
-          "提醒: 这是试探信号，不是确认买点。"
-        ].join("\n");
       },
 
       testMessage(settings) {
@@ -1271,62 +1324,72 @@
         }
       },
 
-      async processTrialBottomSignal(markers, settings, candles, symbol = state.symbol) {
-        const trialMarkers = markers.filter((marker) => marker.text === this.signalName);
-        const currentSettingsKey = settingsKey(settings, symbol);
+      enabledSymbols() {
+        return state.symbols.filter((symbol) => this.isEnabledForSymbol(symbol));
+      },
 
-        if (!state.initializedSeenSettingsKeys.has(currentSettingsKey)) {
-          trialMarkers.forEach((marker) => state.seenTrialMarkers.add(markerKey(marker, settings, symbol)));
-          state.initializedSeenSettingsKeys.add(currentSettingsKey);
-          if (symbol === state.symbol) {
-            state.notificationStatus = "";
-          }
-          saveSeenTrialMarkers();
+      async syncToBackend() {
+        const settings = getSettings();
+        const enabledSymbols = this.enabledSymbols();
+        if (enabledSymbols.length === 0) {
+          this.setStatus("至少开启一个后台通知币对", true);
           return;
         }
 
-        if (!this.isEnabledForSymbol(symbol)) return;
-
-        const newMarkers = trialMarkers.filter((marker) => !state.seenTrialMarkers.has(markerKey(marker, settings, symbol)));
-        if (newMarkers.length === 0) return;
-
-        for (const marker of newMarkers) {
-          const key = markerKey(marker, settings, symbol);
-          try {
-            await this.send(this.markerMessage(marker, settings, candles, symbol));
-            state.seenTrialMarkers.add(key);
-            state.notificationStatus = ` · 企微已通知 ${symbol} ${formatUtc8ChartTime(marker.time, true)}`;
-            this.setStatus(`已发送 ${symbol} ${this.signalName}`);
-          } catch (error) {
-            state.notificationStatus = ` · 企微通知失败: ${error instanceof Error ? error.message : "未知错误"}`;
-            this.setStatus(state.notificationStatus.replace(/^ · /, ""), true);
-            break;
+        this.setStatus("正在同步到后台...");
+        els.syncMonitorButton.disabled = true;
+        try {
+          const response = await fetch("/api/monitor/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              settings,
+              symbols: state.symbols,
+              enabled_symbols: enabledSymbols
+            })
+          });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok || !result.ok) {
+            throw new Error(result.error || `同步接口返回 ${response.status}`);
           }
-        }
-
-        saveSeenTrialMarkers();
-      },
-
-      async processEnabledSymbols(settings, activeSymbol) {
-        const symbols = state.symbols.filter((symbol) => (
-          symbol !== activeSymbol &&
-          this.isEnabledForSymbol(symbol)
-        ));
-
-        for (const symbol of symbols) {
-          try {
-            const candles = await fetchCandles(symbol, settings);
-            const oscillator = calculateJTRegimeOscillator(candles, settings);
-            const bottomMarkers = buildBottomMarkers(oscillator, candles);
-            await this.processTrialBottomSignal(bottomMarkers, settings, candles, symbol);
-          } catch (error) {
-            state.notificationStatus = ` · ${symbol} 通知检查失败: ${error instanceof Error ? error.message : "未知错误"}`;
-            this.setStatus(state.notificationStatus.replace(/^ · /, ""), true);
-            break;
-          }
+          const count = result.enabled_symbols?.length || enabledSymbols.length;
+          this.setStatus(`已同步到后台：${count} 个币对`);
+          await refreshMonitorStatus();
+        } catch (error) {
+          this.setStatus(`后台同步失败: ${error instanceof Error ? error.message : "未知错误"}`, true);
+        } finally {
+          els.syncMonitorButton.disabled = false;
         }
       }
     };
+
+    function formatStatusTime(seconds) {
+      if (!seconds) return "未知";
+      return formatUtc8ChartTime(Number(seconds), true);
+    }
+
+    async function refreshMonitorStatus() {
+      if (!els.workerStatus) return;
+      try {
+        const response = await fetch("/api/monitor/status", { cache: "no-store" });
+        const result = await response.json();
+        if (!response.ok || !result.ok) {
+          throw new Error(result.error || `状态接口返回 ${response.status}`);
+        }
+        const status = result.status || {};
+        const monitor = result.monitor || {};
+        const stateText = status.state || "unknown";
+        const configured = monitor.configured ? `${monitor.enabled_symbols?.length || 0} 个币对` : "未同步";
+        const monitorInterval = monitor.settings?.interval ? monitor.settings.interval.toUpperCase() : "未同步";
+        const lastScan = status.last_scan_at ? ` · 最近扫描 ${formatStatusTime(status.last_scan_at)}` : "";
+        const lastError = status.last_error ? ` · 错误 ${status.last_error}` : "";
+        els.workerStatus.textContent = `后台: ${stateText} · ${configured} · K线: ${monitorInterval}${lastScan}${lastError}`;
+        els.workerStatus.style.color = status.state === "error" ? "#ffb4ae" : "";
+      } catch (error) {
+        els.workerStatus.textContent = `后台状态读取失败: ${error instanceof Error ? error.message : "未知错误"}`;
+        els.workerStatus.style.color = "#ffb4ae";
+      }
+    }
 
     function getHistogramColor(score, previous) {
       if (score == null) return "#7c8491";
@@ -1383,9 +1446,7 @@
         const latest = oscillator[oscillator.length - 1];
         const latestScore = latest ? latest.value.toFixed(2) : "n/a";
         const warning = latest?.isExtremeUp ? " · 短期过热" : latest?.isExtremeDown ? " · 短期恐慌" : "";
-        await NotificationModule.processTrialBottomSignal(bottomMarkers, settings, candles, state.symbol);
-        await NotificationModule.processEnabledSymbols(settings, state.symbol);
-        setStatus(`${candles.length} 根 K 线 · 最新 Regime ${latestScore} · 抄底标记 ${bottomMarkers.length} · ${latestMarkerSummary(bottomMarkers)}${warning}${refreshLabel()}${state.notificationStatus}`);
+        setStatus(`${candles.length} 根 K 线 · 最新 Regime ${latestScore} · 抄底标记 ${bottomMarkers.length} · ${latestMarkerSummary(bottomMarkers)}${warning}${refreshLabel()}`);
       } catch (error) {
         setStatus(error instanceof Error ? error.message : "加载失败", true);
       } finally {
@@ -1434,6 +1495,14 @@
     els.testNotifyButton.addEventListener("click", () => {
       NotificationModule.testCurrentSymbol();
     });
+    els.syncMonitorButton.addEventListener("click", () => {
+      NotificationModule.syncToBackend();
+    });
+    els.settingsToggle.addEventListener("click", () => {
+      const isOpen = els.sidebar.classList.toggle("settings-open");
+      els.settingsToggle.setAttribute("aria-expanded", String(isOpen));
+      els.settingsToggle.textContent = isOpen ? "收起设置" : "展开设置";
+    });
 
     loadSavedMarketType();
     loadSavedRefreshInterval();
@@ -1441,6 +1510,8 @@
     renderSymbolList();
     createCharts();
     loadChart();
+    refreshMonitorStatus();
+    state.monitorStatusTimer = window.setInterval(refreshMonitorStatus, 15000);
   </script>
 </body>
 </html>

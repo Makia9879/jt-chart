@@ -2,6 +2,7 @@ services:
   jt-regime-chart:
     build:
       context: .
+    image: deepseek-usage-jt-regime
     container_name: jt-regime-chart
     ports:
       - "8088:8088"
@@ -10,7 +11,33 @@ services:
       PORT: "8088"
       WECOM_PATH: "/wecom-notify"
       WECOM_APP: "bull-monitor"
+      WECOM_CONFIG: "/run/config/wecom.toml"
+      DATA_DIR: "/data"
+      PYTHONDONTWRITEBYTECODE: "1"
     volumes:
-      - .:/app
+      - .:/app:ro
+      - jt-regime-data:/data
       - /Volumes/samsung_disk_2T/openclaw_workspace/docker-cron/shared/wecom-notify:/wecom-notify:ro
+      - /Volumes/samsung_disk_2T/openclaw_workspace/docker-cron/shared/config/wecom.toml:/run/config/wecom.toml:ro
     restart: unless-stopped
+
+  jt-regime-worker:
+    image: deepseek-usage-jt-regime
+    container_name: jt-regime-worker
+    command: ["python3", "jt_regime_worker.py"]
+    environment:
+      WECOM_PATH: "/wecom-notify"
+      WECOM_APP: "bull-monitor"
+      WECOM_CONFIG: "/run/config/wecom.toml"
+      DATA_DIR: "/data"
+      WORKER_SCAN_SECONDS: "15"
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - .:/app:ro
+      - jt-regime-data:/data
+      - /Volumes/samsung_disk_2T/openclaw_workspace/docker-cron/shared/wecom-notify:/wecom-notify:ro
+      - /Volumes/samsung_disk_2T/openclaw_workspace/docker-cron/shared/config/wecom.toml:/run/config/wecom.toml:ro
+    restart: unless-stopped
+
+volumes:
+  jt-regime-data:
