@@ -19,6 +19,16 @@ except ImportError:  # pragma: no cover - optional dependency
 WECOM_PATH = Path(os.getenv("WECOM_PATH", "/Volumes/samsung_disk_2T/openclaw_workspace/docker-cron/shared/wecom-notify"))
 WECOM_APP = os.getenv("WECOM_APP", "bull-monitor")
 WECOM_CONFIG = os.getenv("WECOM_CONFIG", "").strip()
+ELECTRICWAVE_ENDPOINT = os.getenv(
+    "ELECTRICWAVE_ENDPOINT",
+    "https://notice.makia98.com/api/v1/notifications",
+).strip()
+ELECTRICWAVE_TOKEN = (
+    os.getenv("ELECTRICWAVE_WEBHOOK_TOKEN", "").strip()
+    or os.getenv("WEBHOOK_TOKEN", "").strip()
+)
+ELECTRICWAVE_RECEIVER_ID = os.getenv("ELECTRICWAVE_RECEIVER_ID", "phone-main").strip()
+ELECTRICWAVE_TIMEOUT_SECONDS = float(os.getenv("ELECTRICWAVE_TIMEOUT_SECONDS", "10"))
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "/data"))
 MONITOR_FILE = Path(os.getenv("MONITOR_FILE", DATA_DIR / "monitor.json"))
@@ -128,6 +138,90 @@ def send_wecom(message):
 
     send = getattr(module, "send")
     return bool(send(message, app=WECOM_APP))
+
+
+def configured_notification_channels():
+    channels = ["wecom"]
+    if ELECTRICWAVE_TOKEN:
+        channels.append("electricwave")
+    return channels
+
+
+def send_electricwave(message, title=None, priority="high", idempotency_key=None, group_key=None, data=None):
+    if not ELECTRICWAVE_TOKEN:
+        raise RuntimeError("ElectricWave webhook token is not configured")
+    if not ELECTRICWAVE_ENDPOINT:
+        raise RuntimeError("ElectricWave endpoint is not configured")
+    if not ELECTRICWAVE_RECEIVER_ID:
+        raise RuntimeError("ElectricWave receiver id is not configured")
+
+    notification_title = (title or first_non_empty_line(message) or "JT 抄底信号")[:128]
+    body = str(message)[:1024]
+    payload = {
+        "receiver_id": ELECTRICWAVE_RECEIVER_ID,
+        "title": notification_title,
+        "body": body,
+        "priority": priority,
+    }
+    if idempotency_key:
+        payload["idempotency_key"] = str(idempotency_key)[:128]
+    if group_key:
+        payload["group_key"] = str(group_key)[:64]
+    if data:
+        payload["data"] = data
+
+    try:
+        response = requests.post(
+            ELECTRICWAVE_ENDPOINT,
+            headers={
+                "Authorization": f"Bearer {ELECTRICWAVE_TOKEN}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=ELECTRICWAVE_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException as exc:
+        raise RuntimeError(f"ElectricWave unavailable: {exc}") from exc
+
+    if response.status_code in {200, 201, 202}:
+        return True
+    raise RuntimeError(f"ElectricWave http {response.status_code}: {response.text[:300]}")
+
+
+def send_notification(message, title=None, priority="high", idempotency_key=None, group_key=None, data=None, channels=None):
+    selected_channels = configured_notification_channels() if channels is None else channels
+    results = {}
+    for channel in selected_channels:
+        try:
+            if channel == "wecom":
+                ok = send_wecom(message)
+            elif channel == "electricwave":
+                ok = send_electricwave(
+                    message,
+                    title=title,
+                    priority=priority,
+                    idempotency_key=idempotency_key,
+                    group_key=group_key,
+                    data=data,
+                )
+            else:
+                raise RuntimeError(f"unknown notification channel: {channel}")
+            results[channel] = {"ok": bool(ok)}
+        except Exception as exc:
+            results[channel] = {"ok": False, "error": str(exc)}
+    return results
+
+
+def notification_results_ok(results):
+    return bool(results) and all(item.get("ok") for item in results.values())
+
+
+def first_non_empty_line(text):
+    for line in str(text).splitlines():
+        line = line.strip()
+        if line:
+            return line
+    return ""
 
 
 def fetch_remote_klines(source, symbol, interval, limit):

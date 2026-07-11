@@ -16,7 +16,8 @@ from jt_shared import (
     fetch_remote_klines,
     read_json_file,
     rows_to_candles,
-    send_wecom,
+    notification_results_ok,
+    send_notification,
 )
 
 ROOT = Path(__file__).resolve().parent
@@ -85,8 +86,9 @@ class Handler(SimpleHTTPRequestHandler):
                 self.write_json(200, {"ok": True, "dry_run": True})
                 return
 
-            ok = send_wecom(message)
-            self.write_json(200 if ok else 502, {"ok": ok})
+            results = send_notification(message, title="JT 抄底信号通知测试", group_key="jt-regime-test")
+            ok = notification_results_ok(results)
+            self.write_json(200 if ok else 502, {"ok": ok, "channels": results})
         except Exception as exc:
             self.write_json(500, {"ok": False, "error": str(exc)})
 
@@ -187,6 +189,9 @@ def build_monitor_config(payload):
     sent_signal_keys = previous.get("sent_signal_keys", [])
     if not isinstance(sent_signal_keys, list):
         sent_signal_keys = []
+    sent_signal_channel_keys = previous.get("sent_signal_channel_keys", [])
+    if not isinstance(sent_signal_channel_keys, list):
+        sent_signal_channel_keys = []
 
     return {
         "version": 1,
@@ -196,6 +201,7 @@ def build_monitor_config(payload):
         "enabled_symbols": enabled_symbols,
         "baseline": baseline,
         "sent_signal_keys": sent_signal_keys[-1000:],
+        "sent_signal_channel_keys": sent_signal_channel_keys[-2000:],
     }
 
 
@@ -237,6 +243,7 @@ def summarize_monitor(monitor):
         "settings": monitor.get("settings"),
         "enabled_symbols": monitor.get("enabled_symbols", []),
         "sent_signal_count": len(monitor.get("sent_signal_keys", [])),
+        "sent_signal_channel_count": len(monitor.get("sent_signal_channel_keys", [])),
         "baseline": monitor.get("baseline", {}),
     }
 

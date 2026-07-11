@@ -4,7 +4,9 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+import jt_shared
 from jt_shared import (
     atomic_write_json,
     build_bottom_markers,
@@ -255,6 +257,53 @@ console.log(JSON.stringify({ oscillator, markers }));
                 {"sent_signal_keys": ["a"], "nested": {"ok": True}},
             )
             self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["sent_signal_keys"], ["a"])
+
+    def test_electricwave_sender_posts_contract_payload(self):
+        response = mock.Mock(status_code=202, text='{"status":"queued"}')
+        with (
+            mock.patch.object(jt_shared, "ELECTRICWAVE_TOKEN", "secret-token"),
+            mock.patch.object(jt_shared, "ELECTRICWAVE_ENDPOINT", "https://notice.example/api/v1/notifications"),
+            mock.patch.object(jt_shared, "ELECTRICWAVE_RECEIVER_ID", "phone-main"),
+            mock.patch.object(jt_shared.requests, "post", return_value=response) as post,
+        ):
+            self.assertTrue(jt_shared.send_electricwave(
+                "标题行\n正文",
+                idempotency_key="spot:BTCUSDT:1h:1700000000:试探抄底",
+                group_key="jt-regime-BTCUSDT",
+                data={"symbol": "BTCUSDT"},
+            ))
+
+        kwargs = post.call_args.kwargs
+        self.assertEqual(post.call_args.args[0], "https://notice.example/api/v1/notifications")
+        self.assertEqual(kwargs["headers"]["Authorization"], "Bearer secret-token")
+        self.assertEqual(kwargs["json"]["receiver_id"], "phone-main")
+        self.assertEqual(kwargs["json"]["title"], "标题行")
+        self.assertEqual(kwargs["json"]["body"], "标题行\n正文")
+        self.assertEqual(kwargs["json"]["priority"], "high")
+        self.assertEqual(kwargs["json"]["group_key"], "jt-regime-BTCUSDT")
+        self.assertEqual(kwargs["json"]["data"], {"symbol": "BTCUSDT"})
+
+    def test_notification_fanout_attempts_configured_channels(self):
+        with (
+            mock.patch.object(jt_shared, "send_wecom", return_value=True) as send_wecom,
+            mock.patch.object(jt_shared, "send_electricwave", return_value=True) as send_electricwave,
+        ):
+            results = jt_shared.send_notification(
+                "message",
+                title="title",
+                idempotency_key="signal-key",
+                channels=["wecom", "electricwave"],
+            )
+
+        self.assertEqual(results, {"wecom": {"ok": True}, "electricwave": {"ok": True}})
+        send_wecom.assert_called_once_with("message")
+        send_electricwave.assert_called_once()
+
+    def test_configured_notification_channels_keep_wecom_without_electricwave_token(self):
+        with mock.patch.object(jt_shared, "ELECTRICWAVE_TOKEN", ""):
+            self.assertEqual(jt_shared.configured_notification_channels(), ["wecom"])
+        with mock.patch.object(jt_shared, "ELECTRICWAVE_TOKEN", "secret-token"):
+            self.assertEqual(jt_shared.configured_notification_channels(), ["wecom", "electricwave"])
 
 
 if __name__ == "__main__":

@@ -12,9 +12,10 @@ from jt_shared import (
     calculate_jt_regime_oscillator,
     closed_candles,
     fetch_remote_klines,
+    configured_notification_channels,
     read_json_file,
     rows_to_candles,
-    send_wecom,
+    send_notification,
     signal_key,
 )
 
@@ -72,6 +73,11 @@ def scan_once(now=None):
         if isinstance(key, str)
     ]
     sent_keys = set(sent_key_list)
+    sent_channel_key_list = [
+        key for key in monitor.get("sent_signal_channel_keys", [])
+        if isinstance(key, str)
+    ]
+    sent_channel_keys = set(sent_channel_key_list)
     sent_this_scan = []
 
     for symbol in monitor.get("enabled_symbols", []):
@@ -92,18 +98,55 @@ def scan_once(now=None):
             key = signal_key(marker, settings, symbol)
             if key in sent_keys:
                 continue
-            if not send_wecom(marker_message(marker, settings, symbol)):
-                raise RuntimeError(f"WeCom returned false for {key}")
-            sent_keys.add(key)
-            sent_key_list.append(key)
-            sent_this_scan.append({
-                "symbol": symbol,
-                "signal": marker["text"],
-                "time": marker["time"],
-                "key": key,
-            })
+            message = marker_message(marker, settings, symbol)
+            pending_channels = [
+                channel for channel in configured_notification_channels()
+                if f"{channel}:{key}" not in sent_channel_keys
+            ]
+            results = send_notification(
+                message,
+                title=f"{marker['text']} {symbol}",
+                priority="high",
+                idempotency_key=key,
+                group_key=f"jt-regime-{symbol}",
+                data={
+                    "symbol": symbol,
+                    "signal": marker["text"],
+                    "time": marker["time"],
+                    "marketType": settings["marketType"],
+                    "interval": settings["interval"],
+                },
+                channels=pending_channels,
+            )
+
+            for channel, result in results.items():
+                if result.get("ok"):
+                    channel_key = f"{channel}:{key}"
+                    sent_channel_keys.add(channel_key)
+                    sent_channel_key_list.append(channel_key)
+
+            if all(result.get("ok") for result in results.values()):
+                sent_keys.add(key)
+                sent_key_list.append(key)
+                sent_this_scan.append({
+                    "symbol": symbol,
+                    "signal": marker["text"],
+                    "time": marker["time"],
+                    "key": key,
+                    "channels": sorted(results),
+                })
+
             monitor["sent_signal_keys"] = sent_key_list[-1000:]
+            monitor["sent_signal_channel_keys"] = sent_channel_key_list[-2000:]
             atomic_write_json(MONITOR_FILE, monitor)
+
+            failed = {
+                channel: result.get("error", "returned false")
+                for channel, result in results.items()
+                if not result.get("ok")
+            }
+            if failed:
+                raise RuntimeError(f"notification channel failure for {key}: {failed}")
 
     write_status({
         "state": "ok",
