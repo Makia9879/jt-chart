@@ -2,8 +2,8 @@ services:
   jt-regime-chart:
     build:
       context: .
-    image: deepseek-usage-jt-regime
-    container_name: jt-regime-chart
+    image: jt-chart-jt-regime
+    container_name: jt-chart
     ports:
       - "8088:8088"
     environment:
@@ -12,6 +12,7 @@ services:
       WECOM_PATH: "/wecom-notify"
       WECOM_APP: "bull-monitor"
       WECOM_CONFIG: "/run/config/wecom.toml"
+      WECOM_PROXY: "${WECOM_PROXY:-}"
       ELECTRICWAVE_ENDPOINT: "${ELECTRICWAVE_ENDPOINT:-https://notice.makia98.com/api/v1/notifications}"
       ELECTRICWAVE_WEBHOOK_TOKEN: "${ELECTRICWAVE_WEBHOOK_TOKEN:-}"
       WEBHOOK_TOKEN: "${WEBHOOK_TOKEN:-}"
@@ -22,17 +23,18 @@ services:
       - .:/app:ro
       - jt-regime-data:/data
       - /Volumes/samsung_disk_2T/openclaw_workspace/docker-cron/shared/wecom-notify:/wecom-notify:ro
-      - /Volumes/samsung_disk_2T/openclaw_workspace/docker-cron/shared/config/wecom.toml:/run/config/wecom.toml:ro
+      - /Volumes/samsung_disk_2T/openclaw_workspace/config/wecom.toml:/run/config/wecom.toml:ro
     restart: unless-stopped
 
   jt-regime-worker:
-    image: deepseek-usage-jt-regime
-    container_name: jt-regime-worker
+    image: jt-chart-jt-regime
+    container_name: jt-chart-worker
     command: ["python3", "jt_regime_worker.py"]
     environment:
       WECOM_PATH: "/wecom-notify"
       WECOM_APP: "bull-monitor"
       WECOM_CONFIG: "/run/config/wecom.toml"
+      WECOM_PROXY: "${WECOM_PROXY:-}"
       ELECTRICWAVE_ENDPOINT: "${ELECTRICWAVE_ENDPOINT:-https://notice.makia98.com/api/v1/notifications}"
       ELECTRICWAVE_WEBHOOK_TOKEN: "${ELECTRICWAVE_WEBHOOK_TOKEN:-}"
       WEBHOOK_TOKEN: "${WEBHOOK_TOKEN:-}"
@@ -44,7 +46,7 @@ services:
       - .:/app:ro
       - jt-regime-data:/data
       - /Volumes/samsung_disk_2T/openclaw_workspace/docker-cron/shared/wecom-notify:/wecom-notify:ro
-      - /Volumes/samsung_disk_2T/openclaw_workspace/docker-cron/shared/config/wecom.toml:/run/config/wecom.toml:ro
+      - /Volumes/samsung_disk_2T/openclaw_workspace/config/wecom.toml:/run/config/wecom.toml:ro
     restart: unless-stopped
 
 volumes:

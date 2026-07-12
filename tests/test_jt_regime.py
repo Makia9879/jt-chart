@@ -283,6 +283,22 @@ console.log(JSON.stringify({ oscillator, markers }));
         self.assertEqual(kwargs["json"]["group_key"], "jt-regime-BTCUSDT")
         self.assertEqual(kwargs["json"]["data"], {"symbol": "BTCUSDT"})
 
+    def test_electricwave_sender_falls_back_to_openssl_without_token_in_command(self):
+        response = mock.Mock(stdout=b"HTTP/1.1 202 Accepted\r\n\r\n", stderr=b"")
+        with (
+            mock.patch.object(jt_shared, "ELECTRICWAVE_TOKEN", "secret-token"),
+            mock.patch.object(jt_shared, "ELECTRICWAVE_ENDPOINT", "https://notice.example/api/v1/notifications"),
+            mock.patch.object(jt_shared, "ELECTRICWAVE_RECEIVER_ID", "phone-main"),
+            mock.patch.object(jt_shared.requests, "post", side_effect=jt_shared.requests.Timeout("timeout")),
+            mock.patch.object(jt_shared.subprocess, "run", return_value=response) as run,
+        ):
+            self.assertTrue(jt_shared.send_electricwave("fallback message"))
+
+        args = run.call_args.args[0]
+        self.assertNotIn("secret-token", args)
+        self.assertIn(b"Authorization: Bearer secret-token", run.call_args.kwargs["input"])
+        self.assertIn(b"POST /api/v1/notifications HTTP/1.1", run.call_args.kwargs["input"])
+
     def test_notification_fanout_attempts_configured_channels(self):
         with (
             mock.patch.object(jt_shared, "send_wecom", return_value=True) as send_wecom,

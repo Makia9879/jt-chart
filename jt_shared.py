@@ -3,10 +3,11 @@ import importlib.util
 import json
 import math
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import requests
 
@@ -19,6 +20,7 @@ except ImportError:  # pragma: no cover - optional dependency
 WECOM_PATH = Path(os.getenv("WECOM_PATH", "/Volumes/samsung_disk_2T/openclaw_workspace/docker-cron/shared/wecom-notify"))
 WECOM_APP = os.getenv("WECOM_APP", "bull-monitor")
 WECOM_CONFIG = os.getenv("WECOM_CONFIG", "").strip()
+WECOM_PROXY = os.getenv("WECOM_PROXY")
 ELECTRICWAVE_ENDPOINT = os.getenv(
     "ELECTRICWAVE_ENDPOINT",
     "https://notice.makia98.com/api/v1/notifications",
@@ -135,6 +137,10 @@ def send_wecom(message):
 
     if WECOM_CONFIG:
         module.CONFIG_FILE = Path(WECOM_CONFIG)
+    if WECOM_PROXY is not None:
+        proxy = WECOM_PROXY.strip()
+        module.PROXY = proxy
+        module.PROXIES = {"http": proxy, "https": proxy} if proxy else None
 
     send = getattr(module, "send")
     return bool(send(message, app=WECOM_APP))
@@ -145,6 +151,53 @@ def configured_notification_channels():
     if ELECTRICWAVE_TOKEN:
         channels.append("electricwave")
     return channels
+
+
+def post_json_with_openssl(url, headers, payload, timeout):
+    parsed = urlsplit(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise RuntimeError("OpenSSL fallback only supports https endpoints")
+
+    port = parsed.port or 443
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+
+    body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    request_headers = {
+        "Host": parsed.hostname,
+        "Content-Type": "application/json",
+        "Content-Length": str(len(body)),
+        "Connection": "close",
+        **headers,
+    }
+    header_block = "".join(f"{key}: {value}\r\n" for key, value in request_headers.items())
+    request = f"POST {path} HTTP/1.1\r\n{header_block}\r\n".encode("utf-8") + body
+    result = subprocess.run(
+        [
+            "openssl",
+            "s_client",
+            "-quiet",
+            "-connect",
+            f"{parsed.hostname}:{port}",
+            "-servername",
+            parsed.hostname,
+        ],
+        input=request,
+        capture_output=True,
+        timeout=timeout + 5,
+        check=False,
+    )
+    output = result.stdout.decode("utf-8", errors="replace")
+    status_line = output.splitlines()[0] if output else ""
+    parts = status_line.split()
+    if len(parts) >= 2 and parts[1].isdigit():
+        status_code = int(parts[1])
+        if status_code in {200, 201, 202}:
+            return True
+        raise RuntimeError(f"ElectricWave http {status_code}: {output[:300]}")
+    error = result.stderr.decode("utf-8", errors="replace")[:300]
+    raise RuntimeError(f"ElectricWave OpenSSL fallback failed: {error or status_line}")
 
 
 def send_electricwave(message, title=None, priority="high", idempotency_key=None, group_key=None, data=None):
@@ -170,18 +223,30 @@ def send_electricwave(message, title=None, priority="high", idempotency_key=None
     if data:
         payload["data"] = data
 
+    headers = {
+        "Authorization": f"Bearer {ELECTRICWAVE_TOKEN}",
+        "Content-Type": "application/json",
+    }
+
     try:
         response = requests.post(
             ELECTRICWAVE_ENDPOINT,
-            headers={
-                "Authorization": f"Bearer {ELECTRICWAVE_TOKEN}",
-                "Content-Type": "application/json",
-            },
+            headers=headers,
             json=payload,
             timeout=ELECTRICWAVE_TIMEOUT_SECONDS,
         )
     except requests.RequestException as exc:
-        raise RuntimeError(f"ElectricWave unavailable: {exc}") from exc
+        try:
+            return post_json_with_openssl(
+                ELECTRICWAVE_ENDPOINT,
+                headers,
+                payload,
+                ELECTRICWAVE_TIMEOUT_SECONDS,
+            )
+        except Exception as fallback_exc:
+            raise RuntimeError(
+                f"ElectricWave unavailable: {exc}; OpenSSL fallback failed: {fallback_exc}"
+            ) from fallback_exc
 
     if response.status_code in {200, 201, 202}:
         return True

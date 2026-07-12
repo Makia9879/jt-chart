@@ -153,6 +153,7 @@ def scan_once(now=None):
         "last_scan_at": int(now),
         "message": "扫描完成",
         "last_error": "",
+        "traceback": "",
         "last_sent": sent_this_scan[-10:],
         "sent_signal_count": len(sent_keys),
     })

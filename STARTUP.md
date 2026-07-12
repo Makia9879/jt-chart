@@ -2,8 +2,8 @@
 
 本项目是 JT Regime 图表页和后台正式通知 Worker。默认包含两个 Docker 服务：
 
-- `jt-regime-chart`: 静态页面和 HTTP API，默认监听 `8088`
-- `jt-regime-worker`: 后台扫描已同步币对，触发正式通知
+- `jt-chart`: 静态页面和 HTTP API，默认监听 `8088`
+- `jt-chart-worker`: 后台扫描已同步币对，触发正式通知
 
 ## 1. 准备本地配置
 
@@ -11,7 +11,7 @@
 
 ```sh
 /Volumes/samsung_disk_2T/openclaw_workspace/docker-cron/shared/wecom-notify/wecom.py
-/Volumes/samsung_disk_2T/openclaw_workspace/docker-cron/shared/config/wecom.toml
+/Volumes/samsung_disk_2T/openclaw_workspace/config/wecom.toml
 ```
 
 如果同时启用 ElectricWave 手机通知通道，在项目根目录创建本地 `.env`：
@@ -20,6 +20,7 @@
 ELECTRICWAVE_WEBHOOK_TOKEN=你的 webhook token
 ELECTRICWAVE_RECEIVER_ID=phone-main
 ELECTRICWAVE_ENDPOINT=https://notice.makia98.com/api/v1/notifications
+WECOM_PROXY=http://用户名:密码@cloud.makia98.com:13128
 ```
 
 `.env` 已被 `.gitignore` 忽略。不要把 token 写入代码、提交记录或日志。
