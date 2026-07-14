@@ -97,7 +97,9 @@ fun JtChartScreen(
                             selected = selectedTab == tab,
                             onClick = { selectedTab = tab },
                             label = { Text(tab.label) },
-                            modifier = Modifier.testTag("settings-tab-${tab.name.lowercase()}"),
+                            modifier = Modifier
+                                .semantics { contentDescription = "设置分页：${tab.label}" }
+                                .testTag("settings-tab-${tab.name.lowercase()}"),
                         )
                     }
                 }
@@ -126,14 +128,18 @@ fun JtChartScreen(
                             viewModel.cancelDraft()
                             scope.launch { drawerState.close() }
                         },
-                        modifier = Modifier.testTag("settings-cancel"),
+                        modifier = Modifier
+                            .semantics { contentDescription = "取消设置修改" }
+                            .testTag("settings-cancel"),
                     ) { Text("取消") }
                     Button(
                         onClick = {
                             viewModel.applyDraft()
                             scope.launch { drawerState.close() }
                         },
-                        modifier = Modifier.testTag("settings-apply"),
+                        modifier = Modifier
+                            .semantics { contentDescription = "应用设置并按需刷新" }
+                            .testTag("settings-apply"),
                     ) { Text("应用并刷新") }
                 }
             }
@@ -154,7 +160,9 @@ fun JtChartScreen(
                     actions = {
                         TextButton(
                             onClick = viewModel::retry,
-                            modifier = Modifier.semantics { contentDescription = "立即刷新行情" },
+                            modifier = Modifier
+                                .semantics { contentDescription = "立即刷新行情" }
+                                .testTag("refresh-now"),
                         ) { Text("刷新") }
                     },
                 )
@@ -187,7 +195,14 @@ fun JtChartScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         Text(if (state.isLoading) "正在加载行情…" else "暂无可显示行情")
-                        if (!state.isLoading) Button(onClick = viewModel::retry) { Text("重试") }
+                        if (!state.isLoading) {
+                            Button(
+                                onClick = viewModel::retry,
+                                modifier = Modifier
+                                    .semantics { contentDescription = "重试加载行情" }
+                                    .testTag("empty-retry"),
+                            ) { Text("重试") }
+                        }
                     }
                 }
 
@@ -203,6 +218,7 @@ fun JtChartScreen(
                             .padding(10.dp)
                             .fillMaxWidth()
                             .clickable(onClick = viewModel::retry)
+                            .semantics { contentDescription = "请求失败，点击重试" }
                             .testTag("failure-bubble"),
                     ) {
                         Text("${notice.message} · 点击重试", Modifier.padding(12.dp))
@@ -231,6 +247,7 @@ fun JtChartScreen(
                                 onDragCancel = { drag = 0f },
                             )
                         }
+                        .semantics { contentDescription = "从左缘滑动打开设置" }
                         .testTag("drawer-edge"),
                 )
             }
@@ -241,7 +258,11 @@ fun JtChartScreen(
 @Composable
 private fun DatasetTitle(state: ChartUiState) {
     val dataset = state.displayedDataset
-    Column {
+    Column(
+        Modifier
+            .semantics { contentDescription = "当前图表数据标题" }
+            .testTag("dataset-title"),
+    ) {
         Text(
             dataset?.snapshot?.query?.let {
                 "${it.symbol} · ${it.source.label} · ${it.interval.wireName} · ${it.limit}"
@@ -267,11 +288,18 @@ private fun MarketSettings(settings: AppSettings, update: ((AppSettings) -> AppS
                 selected = symbol == settings.currentSymbol,
                 onClick = { update { it.copy(currentSymbol = symbol) } },
                 label = { Text(symbol) },
+                modifier = Modifier.semantics { contentDescription = "选择币对 $symbol" },
             )
             if (symbol == settings.currentSymbol) {
                 Spacer(Modifier.weight(1f))
-                TextButton(onClick = { update { it.moveCurrent(-1) } }) { Text("上移") }
-                TextButton(onClick = { update { it.moveCurrent(1) } }) { Text("下移") }
+                TextButton(
+                    onClick = { update { it.moveCurrent(-1) } },
+                    modifier = Modifier.semantics { contentDescription = "上移币对 $symbol" },
+                ) { Text("上移") }
+                TextButton(
+                    onClick = { update { it.moveCurrent(1) } },
+                    modifier = Modifier.semantics { contentDescription = "下移币对 $symbol" },
+                ) { Text("下移") }
             }
         }
     }
@@ -282,13 +310,17 @@ private fun MarketSettings(settings: AppSettings, update: ((AppSettings) -> AppS
             onValueChange = { symbolInput = it.uppercase().filter(Char::isLetterOrDigit).take(30) },
             label = { Text("新增币对") },
             singleLine = true,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .semantics { contentDescription = "输入新增币对" },
         )
         TextButton(onClick = {
             val normalized = AppSettings.normalizeSymbols(settings.symbols + symbolInput)
             update { it.copy(symbols = normalized, currentSymbol = symbolInput) }
             symbolInput = ""
-        }, enabled = symbolInput.length >= 3) { Text("添加") }
+        }, enabled = symbolInput.length >= 3,
+            modifier = Modifier.semantics { contentDescription = "添加币对" },
+        ) { Text("添加") }
     }
 
     Text("数据源", style = MaterialTheme.typography.titleMedium)
@@ -297,6 +329,7 @@ private fun MarketSettings(settings: AppSettings, update: ((AppSettings) -> AppS
             selected = settings.source == source,
             onClick = { update { it.copy(source = source) } },
             label = { Text(source.label) },
+            modifier = Modifier.semantics { contentDescription = "选择数据源 ${source.label}" },
         )
     }
     Text("周期", style = MaterialTheme.typography.titleMedium)
@@ -306,6 +339,7 @@ private fun MarketSettings(settings: AppSettings, update: ((AppSettings) -> AppS
                 selected = settings.interval == interval,
                 onClick = { update { it.copy(interval = interval) } },
                 label = { Text(interval.wireName) },
+                modifier = Modifier.semantics { contentDescription = "选择周期 ${interval.wireName}" },
             )
         }
     }
@@ -326,6 +360,7 @@ private fun IndicatorSettings(settings: AppSettings, update: ((AppSettings) -> A
         onValueChange = { value -> update.algorithm(settings, algorithm.copy(extremeThreshold = (value * 10).toInt() / 10.0)) },
         valueRange = 0.5f..5f,
         steps = 44,
+        modifier = Modifier.semantics { contentDescription = "调整极端阈值" },
     )
     IntegerField("平滑", algorithm.smoothLength) { value -> update.algorithm(settings, algorithm.copy(smoothLength = value)) }
     IntegerField("熊市 WMA 周期", algorithm.bearWmaLength) { value -> update.algorithm(settings, algorithm.copy(bearWmaLength = value)) }
@@ -349,6 +384,9 @@ private fun RefreshSettings(settings: AppSettings, update: ((AppSettings) -> App
             selected = settings.autoRefreshSeconds == seconds,
             onClick = { update { it.copy(autoRefreshSeconds = seconds) } },
             label = { Text(if (seconds == 0) "关闭" else "$seconds 秒") },
+            modifier = Modifier.semantics {
+                contentDescription = if (seconds == 0) "关闭自动刷新" else "自动刷新 $seconds 秒"
+            },
         )
     }
     Text("仅在 App 前台、屏幕未锁定且图表可见时刷新。回到前台只补刷一次。")
@@ -365,7 +403,9 @@ private fun IntegerField(label: String, value: Int, onValidValue: (Int) -> Unit)
         },
         label = { Text(label) },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = "编辑$label" },
     )
 }
 

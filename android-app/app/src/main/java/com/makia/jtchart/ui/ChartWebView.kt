@@ -20,6 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.key
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
@@ -31,6 +32,8 @@ import com.makia.jtchart.domain.settings.AlgorithmSettings
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private const val CHART_URL = "https://appassets.androidplatform.net/assets/chart/index.html"
 private val APP_ASSET_ORIGIN: Uri = Uri.parse("https://appassets.androidplatform.net")
@@ -48,6 +51,17 @@ fun ChartWebView(
     modifier: Modifier = Modifier,
 ) {
     var controller by remember { mutableStateOf<ChartWebController?>(null) }
+    val preparedRender by produceState<PreparedChartRender?>(
+        initialValue = null,
+        state.requestGeneration,
+        state.renderRevision,
+        state.displayedDataset?.datasetFingerprint,
+        state.appliedSettings.algorithm,
+        state.viewPolicy,
+        state.viewport,
+    ) {
+        value = withContext(Dispatchers.Default) { prepareChartRender(state) }
+    }
 
     key(state.webViewInstance) {
         AndroidView(
@@ -64,7 +78,7 @@ fun ChartWebView(
             },
             update = {
                 controller?.setInteractionEnabled(interactionEnabled, state)
-                controller?.render(state)
+                controller?.render(state, preparedRender)
             },
         )
         DisposableEffect(state.webViewInstance) {
@@ -77,6 +91,49 @@ fun ChartWebView(
             }
         }
     }
+}
+
+private data class PreparedChartRender(
+    val generation: Long,
+    val renderRevision: Long,
+    val payloadJson: String,
+)
+
+private fun prepareChartRender(state: ChartUiState): PreparedChartRender? {
+    val dataset = state.displayedDataset ?: return null
+    if (state.renderRevision <= 0) return null
+    val query = dataset.snapshot.query
+    val payload = JSONObject()
+        .put("queryKey", JSONObject()
+            .put("source", query.source.wireName)
+            .put("symbol", query.symbol)
+            .put("interval", query.interval.wireName)
+            .put("limit", query.limit))
+        .put("datasetFingerprint", dataset.datasetFingerprint)
+        .put("candles", JSONArray().apply {
+            dataset.snapshot.candles.forEach { candle ->
+                put(JSONArray()
+                    .put(candle.openTimeMs)
+                    .put(candle.open.raw)
+                    .put(candle.high.raw)
+                    .put(candle.low.raw)
+                    .put(candle.close.raw))
+            }
+        })
+        .put("settings", state.appliedSettings.algorithm.toJson())
+        .put("viewPolicy", state.viewPolicy.wireName)
+        .put("viewport", state.viewport
+            ?.takeIf {
+                state.viewPolicy == ChartViewPolicy.RESTORE_EXACT &&
+                    it.queryKey == query.canonicalKey &&
+                    it.datasetFingerprint == dataset.datasetFingerprint
+            }
+            ?.let {
+                JSONObject()
+                    .put("logicalFrom", it.logicalFrom)
+                    .put("logicalTo", it.logicalTo)
+            } ?: JSONObject.NULL)
+    return PreparedChartRender(state.requestGeneration, state.renderRevision, payload.toString())
 }
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -217,43 +274,14 @@ private class ChartWebController(
         handler.postDelayed(handshakeTimeout, 5_000)
     }
 
-    fun render(state: ChartUiState) {
+    fun render(state: ChartUiState, prepared: PreparedChartRender?) {
         if (!ready) return
-        val dataset = state.displayedDataset ?: return
+        if (prepared == null || prepared.generation != state.requestGeneration ||
+            prepared.renderRevision != state.renderRevision
+        ) return
         val identity = state.requestGeneration to state.renderRevision
         if (identity == lastRenderedIdentity || state.renderRevision <= 0) return
-        val query = dataset.snapshot.query
-        val payload = JSONObject()
-            .put("queryKey", JSONObject()
-                .put("source", query.source.wireName)
-                .put("symbol", query.symbol)
-                .put("interval", query.interval.wireName)
-                .put("limit", query.limit))
-            .put("datasetFingerprint", dataset.datasetFingerprint)
-            .put("candles", JSONArray().apply {
-                dataset.snapshot.candles.forEach { candle ->
-                    put(JSONArray()
-                        .put(candle.openTimeMs)
-                        .put(candle.open.raw)
-                        .put(candle.high.raw)
-                        .put(candle.low.raw)
-                        .put(candle.close.raw))
-                }
-            })
-            .put("settings", state.appliedSettings.algorithm.toJson())
-            .put("viewPolicy", state.viewPolicy.wireName)
-            .put("viewport", state.viewport
-                ?.takeIf {
-                    state.viewPolicy == ChartViewPolicy.RESTORE_EXACT &&
-                        it.queryKey == query.canonicalKey &&
-                        it.datasetFingerprint == dataset.datasetFingerprint
-                }
-                ?.let {
-                    JSONObject()
-                        .put("logicalFrom", it.logicalFrom)
-                        .put("logicalTo", it.logicalTo)
-                } ?: JSONObject.NULL)
-        post("chart.renderSnapshot", state.requestGeneration, state.renderRevision, payload)
+        postPrepared("chart.renderSnapshot", prepared)
         lastRenderedIdentity = identity
         onRenderDispatched(state.requestGeneration, state.renderRevision)
     }
@@ -292,6 +320,18 @@ private class ChartWebController(
             .put("renderRevision", renderRevision)
             .put("payload", payload)
             .toString()
+        nativePort?.postMessage(WebMessageCompat(message))
+    }
+
+    private fun postPrepared(type: String, prepared: PreparedChartRender) {
+        val message = buildString(prepared.payloadJson.length + 256) {
+            append("{\"v\":1,\"type\":\"").append(type)
+            append("\",\"id\":\"").append(UUID.randomUUID())
+            append("\",\"pageInstanceId\":\"").append(pageInstanceId)
+            append("\",\"generation\":").append(prepared.generation)
+            append(",\"renderRevision\":").append(prepared.renderRevision)
+            append(",\"payload\":").append(prepared.payloadJson).append('}')
+        }
         nativePort?.postMessage(WebMessageCompat(message))
     }
 

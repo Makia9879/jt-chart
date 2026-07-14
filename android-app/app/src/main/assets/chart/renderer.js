@@ -175,7 +175,7 @@
     function renderSnapshot(snapshot) {
       const previousRange = currentSnapshot ? priceChart.timeScale().getVisibleLogicalRange() : null;
       const followedRight = Boolean(previousRange && currentSnapshot
-        && previousRange.to >= currentSnapshot.candles.length - 1 - 0.5);
+        && previousRange.to >= currentSnapshot.candles.length - 1 - 2);
       rendering = true;
       try {
         applyData(snapshot);

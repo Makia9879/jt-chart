@@ -116,20 +116,10 @@ class ChartViewModel(
             if (queryChanged) {
                 switchQuery(after.query())
                 if (algorithmChanged && state.value.displayedDataset?.snapshot?.query != after.query()) {
-                    _state.update {
-                        it.copy(
-                            renderRevision = it.renderRevision + 1,
-                            viewPolicy = ChartViewPolicy.PRESERVE_OR_FOLLOW_RIGHT,
-                        )
-                    }
+                    redrawCurrentDatasetOrReportWma(after.algorithm.bearWmaLength)
                 }
             } else if (algorithmChanged) {
-                _state.update {
-                    it.copy(
-                        renderRevision = it.renderRevision + 1,
-                        viewPolicy = ChartViewPolicy.PRESERVE_OR_FOLLOW_RIGHT,
-                    )
-                }
+                redrawCurrentDatasetOrReportWma(after.algorithm.bearWmaLength)
             }
             if (!queryChanged && (algorithmChanged || refreshChanged)) {
                 scheduleAutoRefresh()
@@ -137,7 +127,51 @@ class ChartViewModel(
         }
     }
 
-    fun retry() = refresh(ChartViewPolicy.PRESERVE_OR_FOLLOW_RIGHT)
+    fun retry() {
+        if (state.value.chartRuntime == ChartRuntimeState.ERROR) {
+            runtimeRecoveryUsed = false
+            _state.update {
+                it.copy(
+                    notice = null,
+                    webReady = false,
+                    chartRuntime = ChartRuntimeState.LOADING,
+                    webViewInstance = it.webViewInstance + 1,
+                )
+            }
+            return
+        }
+        refresh(ChartViewPolicy.PRESERVE_OR_FOLLOW_RIGHT)
+    }
+
+    private fun redrawCurrentDatasetOrReportWma(required: Int) {
+        val dataset = state.value.displayedDataset ?: return
+        val actual = dataset.snapshot.candles.size
+        if (actual <= required) {
+            val detail = if (actual == dataset.snapshot.query.limit) {
+                "K线数量必须大于熊市 WMA 周期"
+            } else {
+                "行情仅返回 $actual 根 K 线，无法计算 WMA $required"
+            }
+            _state.update {
+                it.copy(
+                    notice = FailureNotice(
+                        it.requestedQuery,
+                        dataset.snapshot.query,
+                        MarketError.NoData,
+                        detail,
+                    ),
+                )
+            }
+            return
+        }
+        _state.update {
+            it.copy(
+                notice = null,
+                renderRevision = it.renderRevision + 1,
+                viewPolicy = ChartViewPolicy.PRESERVE_OR_FOLLOW_RIGHT,
+            )
+        }
+    }
 
     fun onWebReady(ready: Boolean) {
         _state.update {

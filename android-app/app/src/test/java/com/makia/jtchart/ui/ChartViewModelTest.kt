@@ -130,6 +130,27 @@ class ChartViewModelTest {
     }
 
     @Test
+    fun `algorithm-only WMA increase reports shortage without sending an invalid render`() = runTest(dispatcher) {
+        val settings = AppSettings(limit = 120, algorithm = AlgorithmSettings(bearWmaLength = 10))
+        val cached = SnapshotCanonicalizer.store(
+            CandleSnapshot(settings.query(), candles(120), 100),
+            100,
+        )
+        val repository = QueueRepository().apply { enqueuePending() }
+        val viewModel = ChartViewModel(repository, FakeSettingsStore(settings), FakeCache(cached))
+        runCurrent()
+        val revision = viewModel.state.value.renderRevision
+
+        viewModel.updateDraft { it.copy(algorithm = it.algorithm.copy(bearWmaLength = 120)) }
+        viewModel.applyDraft()
+        runCurrent()
+
+        assertEquals(revision, viewModel.state.value.renderRevision)
+        assertEquals("K线数量必须大于熊市 WMA 周期", viewModel.state.value.notice?.message)
+        assertEquals(1, repository.requests.size)
+    }
+
+    @Test
     fun `older generation completing late cannot replace newer dataset`() = runTest(dispatcher) {
         val settings = AppSettings()
         val repository = NonCancellableRepository()
@@ -279,14 +300,28 @@ class ChartViewModelTest {
         assertEquals("图表加载失败", viewModel.state.value.notice?.message?.substringAfter(" · ")?.substringBefore("，"))
     }
 
-    private fun stored(query: Query, fetchedAt: Long): StoredSnapshot = SnapshotCanonicalizer.store(
-        CandleSnapshot(query, candles(), fetchedAt),
-        fetchedAt,
-    )
+    @Test
+    fun `runtime error bubble rebuilds chart without retrying market data`() = runTest(dispatcher) {
+        val settings = AppSettings()
+        val repository = QueueRepository().apply { enqueuePending() }
+        val viewModel = ChartViewModel(repository, FakeSettingsStore(settings), FakeCache(stored(settings.query(), 100)))
+        runCurrent()
+        val generation = viewModel.state.value.requestGeneration
+        val revision = viewModel.state.value.renderRevision
+        viewModel.onChartRuntimeFailure(generation, revision)
+        viewModel.onChartRuntimeFailure(generation, revision)
+        val failedInstance = viewModel.state.value.webViewInstance
 
-    private fun candles() = listOf(
-        Candle(1, price("10"), price("12"), price("9"), price("11"), null, null),
-        Candle(2, price("11"), price("13"), price("10"), price("12"), null, null),
+        viewModel.retry()
+
+        assertEquals(failedInstance + 1, viewModel.state.value.webViewInstance)
+        assertEquals(ChartRuntimeState.LOADING, viewModel.state.value.chartRuntime)
+        assertEquals(1, repository.requests.size)
+    }
+
+    private fun stored(query: Query, fetchedAt: Long): StoredSnapshot = SnapshotCanonicalizer.store(
+        CandleSnapshot(query, candles(201), fetchedAt),
+        fetchedAt,
     )
 
     private fun price(value: String) = DecimalString.price(value)

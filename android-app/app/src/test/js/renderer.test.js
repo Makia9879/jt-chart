@@ -7,12 +7,16 @@ const { createChartRenderer } = require("../../main/assets/chart/renderer.js");
 
 function fakeChart() {
   let rangeListener;
+  let currentRange = { from: 2, to: 8 };
   const setRanges = [];
   const timeScale = {
     subscribeVisibleLogicalRangeChange(listener) { rangeListener = listener; },
     unsubscribeVisibleLogicalRangeChange() {},
-    setVisibleLogicalRange(range) { setRanges.push(range); },
-    getVisibleLogicalRange() { return { from: 2, to: 8 }; },
+    setVisibleLogicalRange(range) { currentRange = range; setRanges.push(range); },
+    getVisibleLogicalRange() { return currentRange; },
+    fitContent() {},
+    scrollToRealTimeCalls: 0,
+    scrollToRealTime() { this.scrollToRealTimeCalls += 1; },
   };
   return {
     chart: {
@@ -26,14 +30,12 @@ function fakeChart() {
     },
     emitRange(range) { rangeListener(range); },
     setRanges,
+    timeScale,
   };
 }
 
-test("price and oscillator logical ranges synchronize bidirectionally without recursion", () => {
-  const price = fakeChart();
-  const oscillator = fakeChart();
-  const charts = [price, oscillator];
-  const renderer = createChartRenderer({
+function createRenderer(charts) {
+  return createChartRenderer({
     LightweightCharts: {
       createChart() { return charts.shift().chart; },
       CrosshairMode: { Normal: 0 },
@@ -45,6 +47,25 @@ test("price and oscillator logical ranges synchronize bidirectionally without re
     ResizeObserver: class { observe() {} disconnect() {} },
     requestAnimationFrame(callback) { callback(); return 1; },
   });
+}
+
+function snapshot(count, viewPolicy) {
+  const candles = Array.from({ length: count }, (_, time) => ({ time, open: 1, high: 2, low: 1, close: 2 }));
+  return {
+    candles,
+    markers: [],
+    oscillator: candles.map(({ time }) => ({ time, value: 0, color: "#fff" })),
+    bearOverlay: [],
+    pricePrecision: 2,
+    viewPolicy,
+    viewport: null,
+  };
+}
+
+test("price and oscillator logical ranges synchronize bidirectionally without recursion", () => {
+  const price = fakeChart();
+  const oscillator = fakeChart();
+  const renderer = createRenderer([price, oscillator]);
   renderer.initialize();
 
   price.emitRange({ from: 1, to: 9 });
@@ -52,4 +73,18 @@ test("price and oscillator logical ranges synchronize bidirectionally without re
 
   assert.deepEqual(oscillator.setRanges, [{ from: 1, to: 9 }]);
   assert.deepEqual(price.setRanges, [{ from: 3, to: 7 }]);
+});
+
+test("a viewport within two candles of the old right edge follows realtime", () => {
+  const price = fakeChart();
+  const oscillator = fakeChart();
+  const renderer = createRenderer([price, oscillator]);
+  renderer.initialize();
+  renderer.renderSnapshot(snapshot(10, "fitContent"));
+  price.timeScale.setVisibleLogicalRange({ from: 3, to: 7 });
+
+  renderer.renderSnapshot(snapshot(12, "preserveOrFollowRight"));
+
+  assert.equal(price.timeScale.scrollToRealTimeCalls, 1);
+  assert.equal(oscillator.timeScale.scrollToRealTimeCalls, 1);
 });
