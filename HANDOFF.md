@@ -1,5 +1,7 @@
 # JT Chart Android MVP 实施交接
 
+> 2026-07-14 实施更新：Android 工程、六源 Repository、Room/DataStore、内置 WebView 图表、Compose B 方案抽屉、失败气泡和核心状态机已经实现。普通 CI 已通过；Pixel 核心 smoke 已通过，但完整 Pixel 矩阵、release 签名门禁和小米真机门禁尚未完成。因此当前只能视为开发候选实现，不能对外标记为最终发布版。下文“尚未创建工程”等内容是实施前现场记录，不再代表当前代码状态。
+
 ## 当前结论
 
 “纯 Android 图表 App” Wayfinder 已收敛并关闭。实施的唯一汇总规格是：

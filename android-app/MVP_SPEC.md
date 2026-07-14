@@ -1,6 +1,6 @@
 # JT Chart Android MVP 规格
 
-> 状态：规划完成，等待实施
+> 状态：MVP 已实施，开发候选验证中（完整 Pixel/release/真机门禁未完成）
 > 版本：`0.1.0` / `versionCode = 1`
 > applicationId：`com.makia.jtchart`
 > 最低系统：Android 10 / API 29
