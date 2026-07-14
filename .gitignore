@@ -2,3 +2,4 @@ __pycache__/
 .env
 SENDER_INTEGRATION.md
 /.idea
+/tests/__pycache__
