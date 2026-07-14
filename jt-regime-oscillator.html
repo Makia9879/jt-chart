@@ -335,6 +335,15 @@
       height: 100%;
     }
 
+    #bearMarketOverlay {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
     .mobile-controls {
       display: none;
     }
@@ -543,6 +552,10 @@
             <input id="smoothLen" type="number" min="1" max="80" step="1" value="8">
           </label>
           <label>
+            熊市 WMA 周期
+            <input id="bearWmaLength" type="number" min="10" max="990" step="10" value="200">
+          </label>
+          <label>
             数据源
             <select id="marketType">
               <option value="spot" selected>Binance Spot</option>
@@ -597,8 +610,9 @@
 
       <section class="charts">
         <div class="chart-pane">
-          <div class="chart-label">价格 K 线</div>
+          <div class="chart-label">价格 K 线 · 白线 WMA · 绿色熊市区域</div>
           <div id="priceChart"></div>
+          <canvas id="bearMarketOverlay" aria-hidden="true"></canvas>
         </div>
         <div class="chart-pane">
           <div class="chart-label">Regime Score</div>
@@ -662,6 +676,8 @@
       candleSeries: null,
       oscSeries: null,
       zeroLine: null,
+      bearMarketOverlay: [],
+      bearOverlayDrawFrame: null,
       resizeObserver: null,
       refreshTimer: null,
       monitorStatusTimer: null,
@@ -691,6 +707,8 @@
       zLength: document.getElementById("zLength"),
       extThresh: document.getElementById("extThresh"),
       smoothLen: document.getElementById("smoothLen"),
+      bearWmaLength: document.getElementById("bearWmaLength"),
+      bearMarketOverlay: document.getElementById("bearMarketOverlay"),
       reloadButton: document.getElementById("reloadButton"),
       moveUpButton: document.getElementById("moveUpButton"),
       moveDownButton: document.getElementById("moveDownButton"),
@@ -983,10 +1001,16 @@
           width: els.oscChart.clientWidth,
           height: els.oscChart.clientHeight
         });
+        requestBearMarketOverlayDraw();
       });
 
       state.resizeObserver.observe(els.priceChart);
       state.resizeObserver.observe(els.oscChart);
+
+      state.priceChart.subscribeCrosshairMove(requestBearMarketOverlayDraw);
+      ["pointermove", "pointerup", "wheel", "dblclick"].forEach((eventName) => {
+        els.priceChart.addEventListener(eventName, requestBearMarketOverlayDraw, { passive: true });
+      });
     }
 
     function syncVisibleRanges() {
@@ -998,6 +1022,7 @@
         changingPrice = true;
         state.oscChart.timeScale().setVisibleLogicalRange(range);
         changingPrice = false;
+        requestBearMarketOverlayDraw();
       });
 
       state.oscChart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
@@ -1027,8 +1052,17 @@
         momEnd: Math.max(3, Math.floor(getNumberInput(els.momEnd, 52))),
         zLength: Math.max(10, Math.floor(getNumberInput(els.zLength, 52))),
         extThresh: getNumberInput(els.extThresh, 2),
-        smoothLen: Math.max(1, Math.floor(getNumberInput(els.smoothLen, 8)))
+        smoothLen: Math.max(1, Math.floor(getNumberInput(els.smoothLen, 8))),
+        bearWmaLength: Math.max(10, Math.min(990, Math.floor(getNumberInput(els.bearWmaLength, 200))))
       };
+    }
+
+    function validateBearMarketSettings(settings, candleCount = settings.limit) {
+      if (settings.bearWmaLength < candleCount) return "";
+      if (candleCount !== settings.limit) {
+        return `行情仅返回 ${candleCount} 根 K 线，无法计算 WMA ${settings.bearWmaLength}`;
+      }
+      return "K线数量必须大于熊市 WMA 周期";
     }
 
     function apiUrl(symbol, settings) {
@@ -1146,6 +1180,110 @@
       }
 
       return weighted / weightSum;
+    }
+
+    function calculateBearMarketOverlay(candles, length) {
+      const closes = candles.map((candle) => candle.close);
+      const output = [];
+
+      for (let index = length - 1; index < candles.length; index++) {
+        const average = wma(closes, length, index);
+        if (average == null) continue;
+
+        output.push({
+          time: candles[index].time,
+          close: candles[index].close,
+          wma: average,
+          isBear: candles[index].close < average
+        });
+      }
+
+      return output;
+    }
+
+    function requestBearMarketOverlayDraw() {
+      if (state.bearOverlayDrawFrame != null) return;
+      state.bearOverlayDrawFrame = window.requestAnimationFrame(() => {
+        state.bearOverlayDrawFrame = null;
+        drawBearMarketOverlay();
+      });
+    }
+
+    function drawBearMarketOverlay() {
+      const canvas = els.bearMarketOverlay;
+      const width = els.priceChart.clientWidth;
+      const height = els.priceChart.clientHeight;
+      const pixelRatio = window.devicePixelRatio || 1;
+      const bitmapWidth = Math.max(1, Math.round(width * pixelRatio));
+      const bitmapHeight = Math.max(1, Math.round(height * pixelRatio));
+
+      if (canvas.width !== bitmapWidth || canvas.height !== bitmapHeight) {
+        canvas.width = bitmapWidth;
+        canvas.height = bitmapHeight;
+      }
+
+      const context = canvas.getContext("2d");
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      context.clearRect(0, 0, width, height);
+
+      const points = state.bearMarketOverlay.map((item) => ({
+        ...item,
+        x: state.priceChart.timeScale().timeToCoordinate(item.time),
+        closeY: state.candleSeries.priceToCoordinate(item.close),
+        wmaY: state.candleSeries.priceToCoordinate(item.wma)
+      })).filter((item) => [item.x, item.closeY, item.wmaY].every(Number.isFinite));
+
+      if (points.length === 0) return;
+
+      context.save();
+      context.beginPath();
+      context.rect(0, 0, width, height);
+      context.clip();
+      context.fillStyle = "rgba(0, 128, 0, 0.30)";
+
+      for (let index = 1; index < points.length; index++) {
+        const previous = points[index - 1];
+        const current = points[index];
+        const previousDelta = previous.close - previous.wma;
+        const currentDelta = current.close - current.wma;
+        if (!previous.isBear && !current.isBear) continue;
+
+        let start = previous;
+        let end = current;
+        if (previous.isBear !== current.isBear) {
+          const ratio = -previousDelta / (currentDelta - previousDelta);
+          const crossing = {
+            x: previous.x + (current.x - previous.x) * ratio,
+            closeY: previous.closeY + (current.closeY - previous.closeY) * ratio,
+            wmaY: previous.wmaY + (current.wmaY - previous.wmaY) * ratio
+          };
+          if (previousDelta < 0) {
+            end = crossing;
+          } else {
+            start = crossing;
+          }
+        }
+
+        context.beginPath();
+        context.moveTo(start.x, start.wmaY);
+        context.lineTo(end.x, end.wmaY);
+        context.lineTo(end.x, end.closeY);
+        context.lineTo(start.x, start.closeY);
+        context.closePath();
+        context.fill();
+      }
+
+      context.beginPath();
+      context.moveTo(points[0].x, points[0].wmaY);
+      for (let index = 1; index < points.length; index++) {
+        context.lineTo(points[index].x, points[index].wmaY);
+      }
+      context.strokeStyle = "#ffffff";
+      context.lineWidth = 2;
+      context.lineJoin = "round";
+      context.lineCap = "round";
+      context.stroke();
+      context.restore();
     }
 
     function calculateJTRegimeOscillator(candles, settings) {
@@ -1402,7 +1540,7 @@
     function updateHeader(settings) {
       const marketName = (DATA_SOURCES[settings.marketType] || DATA_SOURCES.spot).label;
       els.title.textContent = state.symbol;
-      els.meta.textContent = `${settings.interval.toUpperCase()} · ${marketName} · mom ${settings.momStart}-${settings.momEnd} · z ${settings.zLength}`;
+      els.meta.textContent = `${settings.interval.toUpperCase()} · ${marketName} · WMA ${settings.bearWmaLength} · mom ${settings.momStart}-${settings.momEnd} · z ${settings.zLength}`;
     }
 
     function refreshLabel() {
@@ -1416,6 +1554,14 @@
       clearAutoRefresh();
 
       const settings = getSettings();
+      const bearMarketSettingsError = validateBearMarketSettings(settings);
+      if (bearMarketSettingsError) {
+        setStatus(bearMarketSettingsError, true);
+        state.isLoading = false;
+        scheduleAutoRefresh();
+        return;
+      }
+
       if (settings.momStart >= settings.momEnd) {
         setStatus("Lag Start 必须小于 Lag End", true);
         state.isLoading = false;
@@ -1428,8 +1574,12 @@
 
       try {
         const candles = await fetchCandles(state.symbol, settings);
+        const candleCountError = validateBearMarketSettings(settings, candles.length);
+        if (candleCountError) throw new Error(candleCountError);
+
         const oscillator = calculateJTRegimeOscillator(candles, settings);
         const bottomMarkers = buildBottomMarkers(oscillator, candles);
+        state.bearMarketOverlay = calculateBearMarketOverlay(candles, settings.bearWmaLength);
 
         applyPricePrecision(candles);
         state.candleSeries.setData(candles);
@@ -1442,6 +1592,7 @@
 
         state.priceChart.timeScale().fitContent();
         state.oscChart.timeScale().fitContent();
+        requestBearMarketOverlayDraw();
 
         const latest = oscillator[oscillator.length - 1];
         const latestScore = latest ? latest.value.toFixed(2) : "n/a";

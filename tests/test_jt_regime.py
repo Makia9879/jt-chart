@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -15,6 +16,27 @@ from jt_shared import (
     read_json_file,
     signal_key,
 )
+
+
+PAGE_PATH = Path(__file__).resolve().parents[1] / "jt-regime-oscillator.html"
+
+
+def javascript_function_source(name):
+    page = PAGE_PATH.read_text(encoding="utf-8")
+    match = re.search(rf"function\s+{re.escape(name)}\s*\([^)]*\)\s*\{{", page)
+    if not match:
+        raise AssertionError(f"JavaScript function not found: {name}")
+
+    depth = 0
+    for index in range(match.end() - 1, len(page)):
+        if page[index] == "{":
+            depth += 1
+        elif page[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return page[match.start():index + 1]
+
+    raise AssertionError(f"JavaScript function is incomplete: {name}")
 
 
 def fixture_candles():
@@ -47,6 +69,60 @@ def fixture_candles():
 
 
 class JTRegimeTests(unittest.TestCase):
+    def test_bear_market_overlay_matches_pine_wma_and_condition(self):
+        if shutil.which("node") is None:
+            self.skipTest("node is not installed")
+
+        candles = [
+            {"time": 1, "close": 10},
+            {"time": 2, "close": 11},
+            {"time": 3, "close": 9},
+            {"time": 4, "close": 8},
+            {"time": 5, "close": 12},
+        ]
+        script = "\n".join([
+            javascript_function_source("wma"),
+            javascript_function_source("calculateBearMarketOverlay"),
+            "console.log(JSON.stringify(calculateBearMarketOverlay(JSON.parse(process.argv[1]), 3)));",
+        ])
+        result = subprocess.run(
+            ["node", "-e", script, json.dumps(candles)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        overlay = json.loads(result.stdout)
+        self.assertEqual([item["time"] for item in overlay], [3, 4, 5])
+        self.assertAlmostEqual(overlay[0]["wma"], 59 / 6)
+        self.assertAlmostEqual(overlay[1]["wma"], 53 / 6)
+        self.assertAlmostEqual(overlay[2]["wma"], 61 / 6)
+        self.assertEqual([item["isBear"] for item in overlay], [True, True, False])
+
+    def test_bear_market_period_requires_more_candles_than_wma_length(self):
+        if shutil.which("node") is None:
+            self.skipTest("node is not installed")
+
+        script = "\n".join([
+            javascript_function_source("validateBearMarketSettings"),
+            "console.log(JSON.stringify([",
+            "  validateBearMarketSettings({ limit: 200, bearWmaLength: 200 }),",
+            "  validateBearMarketSettings({ limit: 201, bearWmaLength: 200 }),",
+            "  validateBearMarketSettings({ limit: 500, bearWmaLength: 200 }, 120)",
+            "]));",
+        ])
+        result = subprocess.run(
+            ["node", "-e", script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        errors = json.loads(result.stdout)
+        self.assertEqual(errors[0], "K线数量必须大于熊市 WMA 周期")
+        self.assertEqual(errors[1], "")
+        self.assertEqual(errors[2], "行情仅返回 120 根 K 线，无法计算 WMA 200")
+
     def test_formula_matches_page_semantics_for_scores_and_markers(self):
         settings = {
             "marketType": "spot",
