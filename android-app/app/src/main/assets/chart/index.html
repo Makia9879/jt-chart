@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src data:; connect-src 'none'; font-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>JT Chart</title>
+  <link rel="stylesheet" href="chart.css">
+</head>
+<body>
+  <main id="chart-root" aria-label="JT Chart 行情图表">
+    <section id="price-wrap" aria-label="价格 K 线图">
+      <div id="price-chart"></div>
+      <canvas id="bear-overlay" aria-hidden="true"></canvas>
+    </section>
+    <section id="oscillator-chart" aria-label="JT Regime 柱状图"></section>
+  </main>
+  <script src="lightweight-charts.standalone.production.js"></script>
+  <script src="algorithms.js"></script>
+  <script src="renderer.js"></script>
+  <script src="bridge.js"></script>
+  <script src="bootstrap.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

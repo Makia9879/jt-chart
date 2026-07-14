@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "length": 3,
+  "candles": [
+    {
+      "time": 1,
+      "close": 10
+    },
+    {
+      "time": 2,
+      "close": 11
+    },
+    {
+      "time": 3,
+      "close": 9
+    },
+    {
+      "time": 4,
+      "close": 8
+    },
+    {
+      "time": 5,
+      "close": 12
+    }
+  ],
+  "expected": [
+    {
+      "time": 3,
+      "wmaNumerator": 59,
+      "wmaDenominator": 6,
+      "isBear": true
+    },
+    {
+      "time": 4,
+      "wmaNumerator": 53,
+      "wmaDenominator": 6,
+      "isBear": true
+    },
+    {
+      "time": 5,
+      "wmaNumerator": 61,
+      "wmaDenominator": 6,
+      "isBear": false
+    }
+  ]
+}

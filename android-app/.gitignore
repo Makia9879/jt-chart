@@ -1,0 +1,15 @@
+.gradle/
+.gradle-user-home/
+.android-user-home/
+.kotlin/
+local.properties
+**/build/
+captures/
+qa-evidence/
+dist/
+*.apk
+*.aab
+*.jks
+*.keystore
+*.hprof
+.DS_Store

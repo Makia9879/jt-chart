@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>JT Chart 移动抽屉原型</title>
+  <style>
+    :root{color-scheme:dark;--bg:#090d12;--surface:#111820;--surface2:#18222d;--outline:#2c3948;--text:#eef3f8;--muted:#97a6b6;--primary:#86d993;--primary2:#183d25;--red:#ffb4ab;--amber:#ffd181;--blue:#8ecaff;--drawer:346px;font-family:Inter,Roboto,system-ui,sans-serif}
+    *{box-sizing:border-box} body{margin:0;background:#05070a;color:var(--text);min-height:100vh;overflow:hidden} button,input,select{font:inherit;color:inherit} button{cursor:pointer}
+    .stage{height:100vh;display:grid;place-items:center;padding:18px 18px 86px;background:radial-gradient(circle at 50% 0,#15202c,#05070a 60%)}
+    .device{position:relative;width:min(430px,calc(100vw - 36px));height:min(932px,calc(100vh - 112px));border:7px solid #252a31;border-radius:34px;overflow:hidden;background:var(--bg);box-shadow:0 30px 80px #000c;transition:.3s}
+    .device.landscape{width:min(932px,calc(100vw - 36px));height:min(430px,calc(100vh - 112px));border-radius:25px}
+    .app{height:100%;position:relative;display:flex;flex-direction:column;overflow:hidden;touch-action:none}.topbar{height:58px;flex:none;display:flex;align-items:center;gap:8px;padding:8px 10px;background:#0e151dcc;border-bottom:1px solid var(--outline);z-index:2}
+    .icon{width:42px;height:42px;border:0;border-radius:50%;background:transparent;display:grid;place-items:center;font-size:21px}.icon:hover{background:#ffffff12}.title{min-width:0;flex:1}.title strong{display:block;font-size:16px}.title span{display:block;color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.price{text-align:right;font-size:14px}.price small{display:block;color:var(--primary)}
+    .status-strip{height:34px;flex:none;display:flex;align-items:center;gap:6px;padding:4px 12px;color:var(--muted);font-size:11px;background:#0c1219;border-bottom:1px solid #1b2632}.status-dot{width:7px;height:7px;border-radius:50%;background:var(--primary)}.status-strip.offline{color:var(--amber);background:#2b200d}.status-strip.offline .status-dot{background:var(--amber)}.status-strip.error{color:var(--red);background:#321615}.status-strip.error .status-dot{background:var(--red)}.status-strip.loading .status-dot{animation:pulse .8s infinite alternate}@keyframes pulse{to{opacity:.2}}
+    .chart-shell{position:relative;flex:1;min-height:0;overflow:hidden;background:linear-gradient(#0d141c,#090d12)}.chart-title{position:absolute;left:12px;top:10px;font-size:11px;color:var(--muted);z-index:1}.chart-title b{color:var(--text);font-size:13px}.chart-svg{width:100%;height:67%;display:block;border-bottom:1px solid var(--outline)}.indicator-svg{width:100%;height:33%;display:block}.crosshair{position:absolute;top:0;bottom:0;left:56%;border-left:1px dashed #8ecaff88;pointer-events:none}.drag-note{position:absolute;right:9px;bottom:9px;font-size:10px;color:#667789;background:#0b1118cc;padding:5px 7px;border-radius:8px}.loading-mask{position:absolute;inset:0;background:#091018d9;display:none;place-items:center;z-index:3}.loading-mask.show{display:grid}.spinner{width:32px;height:32px;border:3px solid #ffffff22;border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{rotate:360deg}}
+    .backdrop{position:absolute;inset:0;background:#0009;z-index:5;opacity:0;pointer-events:none;transition:.2s}.drawer{position:absolute;z-index:6;inset:0 auto 0 0;width:min(var(--drawer),88%);background:var(--surface);border-radius:0 22px 22px 0;transform:translateX(-102%);transition:.24s cubic-bezier(.2,.8,.2,1);display:flex;flex-direction:column;box-shadow:20px 0 50px #0008;touch-action:pan-y}.drawer.open{transform:none}.drawer.open+.backdrop{opacity:1;pointer-events:auto}.drawer-head{min-height:64px;display:flex;align-items:center;gap:9px;padding:10px 12px;border-bottom:1px solid var(--outline)}.drawer-head h2{font-size:17px;margin:0;flex:1}.drawer-head small{display:block;color:var(--muted);font-weight:400}.drawer-body{min-height:0;overflow:auto;padding:10px 14px 26px}.section{border-bottom:1px solid var(--outline);padding:13px 0}.section h3{font-size:12px;color:var(--muted);font-weight:600;margin:0 0 9px}.chips{display:flex;gap:7px;flex-wrap:wrap}.chip{border:1px solid var(--outline);background:var(--surface2);border-radius:18px;padding:8px 11px;font-size:12px}.chip.active{background:var(--primary2);border-color:var(--primary);color:#baf5c5}.field{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;min-height:48px}.field label span,.hint{display:block;font-size:10px;color:var(--muted)}select,input[type=number]{min-width:112px;background:var(--surface2);border:1px solid var(--outline);border-radius:10px;padding:9px}.switch{appearance:none;width:46px;height:26px;background:#3a4652;border-radius:14px;padding:3px;transition:.2s}.switch:before{content:"";display:block;width:20px;height:20px;border-radius:50%;background:white;transition:.2s}.switch:checked{background:#3c8f50}.switch:checked:before{translate:20px}.primary{border:0;border-radius:18px;background:var(--primary);color:#06210c;font-weight:700;padding:11px 15px}.tonal{border:0;border-radius:18px;background:#243443;padding:10px 13px}.drawer-foot{display:none;padding:11px 14px;border-top:1px solid var(--outline);gap:8px}.drawer-foot button{flex:1}
+    .variant-b .drawer-body{padding:0}.tabs{display:none}.variant-b .tabs{display:flex;padding:10px 12px 0;gap:5px;overflow:auto}.tab{white-space:nowrap;border:0;border-bottom:2px solid transparent;background:none;color:var(--muted);padding:9px}.tab.active{color:var(--primary);border-color:var(--primary)}.variant-b .drawer-body>.section{display:none;margin:0 15px}.variant-b .drawer-body>.section.active{display:block}.variant-b .drawer-foot{display:flex}.dirty{display:none;color:var(--amber);font-size:10px}.variant-b.is-dirty .dirty{display:block}
+    .summary-list,.detail-page{display:none}.variant-c .drawer-body>.section,.variant-c .tabs{display:none}.variant-c .summary-list{display:grid;gap:8px}.summary-item{border:0;border-radius:14px;background:var(--surface2);padding:13px;text-align:left;display:grid;grid-template-columns:1fr auto;gap:3px}.summary-item small{color:var(--muted);grid-column:1}.summary-item b{color:var(--primary);font-size:12px}.detail-head{display:flex;align-items:center;gap:8px;margin:3px 0 8px}.detail-head h3{margin:0;color:var(--text);font-size:15px}.variant-c.detail .summary-list{display:none}.variant-c.detail .detail-page.active{display:block}.variant-c .drawer{width:min(310px,84%)}
+    .quickbar{display:flex;gap:5px;align-items:center;padding:6px 8px;background:#0e151d;border-top:1px solid var(--outline);overflow:auto;flex:none}.quickbar .chip{padding:6px 10px;white-space:nowrap}.variant-b .quickbar{justify-content:center}.variant-b .quickbar .source{display:none}.variant-c .quickbar{display:none}
+    .switcher{position:fixed;z-index:20;left:50%;bottom:18px;translate:-50% 0;display:flex;align-items:center;gap:5px;padding:6px;border:1px solid #536170;background:#ecf1f7;color:#10151b;border-radius:999px;box-shadow:0 10px 35px #000c}.switcher button{border:0;background:#d8e1eb;color:#10151b;border-radius:50%;width:34px;height:34px;font-size:20px}.switcher span{min-width:190px;text-align:center;font-size:12px;font-weight:700}.toolbox{position:fixed;right:20px;top:18px;z-index:20;display:flex;gap:5px}.toolbox button{border:1px solid #536170;background:#19232e;color:#eaf1f8;border-radius:16px;padding:8px 10px;font-size:11px}
+    .gesture-toast{position:absolute;left:50%;bottom:50px;translate:-50% 0;background:#dce8f5;color:#102030;border-radius:16px;padding:8px 12px;font-size:11px;opacity:0;transition:.2s;z-index:4;white-space:nowrap}.gesture-toast.show{opacity:1}.edge-handle{position:absolute;z-index:4;left:0;top:64px;bottom:0;width:12px;background:linear-gradient(90deg,#86d99344,transparent)}
+    @media(max-height:560px){.device{height:calc(100vh - 105px)}.topbar{height:50px}.icon{width:36px;height:36px}.status-strip{height:29px}.quickbar{position:absolute;right:4px;top:53px;z-index:3;background:#0b1118dd;border:0;border-radius:13px}.drawer-head{min-height:52px}.drawer{--drawer:390px}.drawer-body{padding-bottom:12px}.section{padding:9px 0}.field{min-height:42px}}
+    @media(max-width:520px){.toolbox{top:8px;right:8px;flex-direction:column}.toolbox button{padding:6px 8px}.stage{padding-left:5px;padding-right:5px}.device{width:calc(100vw - 10px)}}
+  </style>
+</head>
+<body>
+  <!-- PROTOTYPE: Three mobile settings-drawer variants, switchable via ?variant=, in one throwaway page. -->
+  <main class="stage">
+    <section class="device" id="device" aria-label="Pixel 9 Pro XL 原型画布">
+      <div class="app" id="app">
+        <header class="topbar">
+          <button class="icon" id="menu" aria-label="打开设置" aria-expanded="false">☰</button>
+          <div class="title"><strong id="symbolTitle">BTCUSDT</strong><span id="meta">1H · Binance USDT-M · 500 根</span></div>
+          <div class="price">$118,420<small>+2.16%</small></div>
+        </header>
+        <div class="status-strip" id="status"><i class="status-dot"></i><span>已更新 · 10:42:18</span></div>
+        <div class="chart-shell" id="chart">
+          <div class="chart-title"><b id="chartSymbol">BTCUSDT</b> · K线 + 熊市 WMA</div>
+          <svg class="chart-svg" viewBox="0 0 430 400" preserveAspectRatio="none" aria-label="K线图示意">
+            <defs><linearGradient id="fill" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#20a858" stop-opacity=".34"/><stop offset="1" stop-color="#20a858" stop-opacity="0"/></linearGradient></defs>
+            <g stroke="#26323e" stroke-width="1"><path d="M0 80H430M0 160H430M0 240H430M0 320H430"/><path d="M80 0V400M160 0V400M240 0V400M320 0V400M400 0V400"/></g>
+            <path d="M0 315 C35 280 50 305 82 245 S132 300 165 224 S220 245 246 170 S300 210 330 123 S390 145 430 65 V400 H0Z" fill="url(#fill)"/>
+            <path d="M0 315 C35 280 50 305 82 245 S132 300 165 224 S220 245 246 170 S300 210 330 123 S390 145 430 65" fill="none" stroke="#73d68a" stroke-width="3"/>
+            <path d="M0 334 C90 305 155 270 225 250 S350 183 430 152" fill="none" stroke="#ffad42" stroke-width="2"/>
+            <g fill="#8ecaff"><path d="M155 273l7 12h-14z"/><path d="M282 203l7 12h-14z"/></g>
+          </svg>
+          <svg class="indicator-svg" viewBox="0 0 430 180" preserveAspectRatio="none" aria-label="JT Regime 指标示意">
+            <g stroke="#26323e"><path d="M0 45H430M0 90H430M0 135H430"/></g><path d="M0 105 C35 130 58 48 94 74 S153 147 190 100 S240 33 272 62 S330 135 365 84 S405 42 430 67" fill="none" stroke="#8ecaff" stroke-width="3"/><path d="M0 90H430" stroke="#637487" stroke-dasharray="5 5"/><text x="8" y="18" fill="#97a6b6" font-size="11">JT REGIME</text>
+          </svg>
+          <div class="crosshair" id="crosshair"></div><div class="drag-note">拖动平移 · 双指缩放</div><div class="loading-mask" id="loading"><i class="spinner"></i></div><div class="gesture-toast" id="toast">图表平移中（抽屉手势已禁用）</div>
+        </div>
+        <nav class="quickbar" aria-label="快捷切换"><button class="chip active">1H</button><button class="chip">4H</button><button class="chip">1D</button><button class="chip source">Binance 合约</button></nav>
+        <div class="edge-handle" title="仅此狭边缘可右滑打开抽屉"></div>
+        <aside class="drawer" id="drawer" aria-label="设置抽屉">
+          <div class="drawer-head"><button class="icon" id="close" aria-label="关闭">←</button><h2>图表设置<small id="modeSubtitle">修改后即时生效</small></h2><span class="dirty">未应用</span></div>
+          <div class="tabs"><button class="tab active" data-tab="market">行情</button><button class="tab" data-tab="indicator">指标</button><button class="tab" data-tab="refresh">刷新</button></div>
+          <div class="drawer-body">
+            <div class="summary-list">
+              <button class="summary-item" data-detail="market"><span>行情与币种</span><small>BTCUSDT · 1H · Binance 合约</small><b>编辑 ›</b></button>
+              <button class="summary-item" data-detail="indicator"><span>指标参数</span><small>JT Regime · WMA 200 · 拄底标记</small><b>编辑 ›</b></button>
+              <button class="summary-item" data-detail="refresh"><span>刷新与缓存</span><small>每 60 秒 · 前台可见时</small><b>编辑 ›</b></button>
+              <p class="hint">只在左侧 12dp 边缘允许滑出抽屉，其余手势留给图表。</p>
+            </div>
+            <div class="detail-page" data-page="market"><div class="detail-head"><button class="icon detail-back">←</button><h3>行情与币种</h3></div></div>
+            <div class="detail-page" data-page="indicator"><div class="detail-head"><button class="icon detail-back">←</button><h3>指标参数</h3></div></div>
+            <div class="detail-page" data-page="refresh"><div class="detail-head"><button class="icon detail-back">←</button><h3>刷新与缓存</h3></div></div>
+            <section class="section active" data-section="market"><h3>币种</h3><div class="chips" id="symbols"><button class="chip active">BTCUSDT</button><button class="chip">ETHUSDT</button><button class="chip">SOLUSDT</button><button class="chip">DOGEUSDT</button><button class="chip">+</button></div><div class="field"><label>周期<span>快捷项也在图表底部</span></label><select id="interval"><option>1H</option><option>4H</option><option>1D</option></select></div><div class="field"><label>K 线数量<span>越多越耗时</span></label><select><option>500</option><option>1000</option><option>1500</option></select></div><div class="field"><label>数据源<span>公共行情直连</span></label><select><option>Binance USDT-M</option><option>Binance Spot</option><option>Bybit USDT Perp</option><option>Bybit Spot</option><option>Bitget USDT Perp</option><option>Bitget Spot</option></select></div></section>
+            <section class="section" data-section="indicator"><h3>JT REGIME</h3><div class="field"><label>Z 周期</label><input type="number" value="100"></div><div class="field"><label>动量区间</label><select><option>5 — 20</option><option>10 — 30</option></select></div><div class="field"><label>平滑周期</label><input type="number" value="10"></div><div class="field"><label>拄底标记</label><input class="switch" type="checkbox" checked></div><h3>熊市覆盖</h3><div class="field"><label>WMA 周期</label><input type="number" value="200"></div></section>
+            <section class="section" data-section="refresh"><h3>刷新与缓存</h3><div class="field"><label>自动刷新<span>仅前台且图表可见</span></label><input class="switch" type="checkbox" checked></div><div class="field"><label>刷新间隔</label><select><option>60 秒</option><option>30 秒</option><option>5 分钟</option></select></div><div class="field"><label>离线缓存<span>先显示最后成功数据</span></label><input class="switch" type="checkbox" checked></div><button class="tonal" id="refreshNow">立即刷新</button></section>
+          </div>
+          <footer class="drawer-foot"><button class="tonal" id="cancel">取消</button><button class="primary" id="apply">应用并刷新</button></footer>
+        </aside>
+        <div class="backdrop" id="backdrop"></div>
+      </div>
+    </section>
+  </main>
+  <div class="toolbox"><button id="rotate">↻ 横/竖屏</button><button data-state="normal">正常</button><button data-state="loading">加载</button><button data-state="offline">离线</button><button data-state="error">错误</button></div>
+  <div class="switcher"><button id="prev" aria-label="上一方案">‹</button><span id="variantLabel"></span><button id="next" aria-label="下一方案">›</button></div>
+  <script>
+    const variants={A:'即时生效分组',B:'分页后应用',C:'逐级聚焦'};
+    const q=new URLSearchParams(location.search);let current=(q.get('variant')||'A').toUpperCase();if(!variants[current])current='A';
+    const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];const app=$('#app'),drawer=$('#drawer'),status=$('#status'),loading=$('#loading');
+    function renderVariant(){const body=$('.drawer-body');$$('.detail-page .section').forEach(section=>body.append(section));app.className=`app variant-${current.toLowerCase()}`;$('#variantLabel').textContent=`${current} — ${variants[current]}`;$('#modeSubtitle').textContent=current==='A'?'修改后即时生效':current==='B'?'先编辑，再一次应用':'点击分类进入详情';q.set('variant',current);history.replaceState(null,'',`?${q}`);app.classList.remove('detail','is-dirty');$$('.detail-page').forEach(x=>x.classList.remove('active'));}
+    function cycle(d){const keys=Object.keys(variants),i=keys.indexOf(current);current=keys[(i+d+keys.length)%keys.length];renderVariant()}
+    function openDrawer(){drawer.classList.add('open');$('#menu').setAttribute('aria-expanded','true')}
+    function closeDrawer(){drawer.classList.remove('open');$('#menu').setAttribute('aria-expanded','false');app.classList.remove('detail')}
+    $('#menu').onclick=openDrawer;$('#close').onclick=closeDrawer;$('#backdrop').onclick=closeDrawer;$('#prev').onclick=()=>cycle(-1);$('#next').onclick=()=>cycle(1);$('#rotate').onclick=()=>$('#device').classList.toggle('landscape');
+    $$('.toolbox [data-state]').forEach(b=>b.onclick=()=>{const kind=b.dataset.state;status.className=`status-strip ${kind==='normal'?'':kind}`;loading.classList.toggle('show',kind==='loading');status.querySelector('span').textContent={normal:'已更新 · 10:42:18',loading:'正在请求 Binance USDT-M…',offline:'离线数据 · 最后更新 09:38:02',error:'Bybit 请求失败 · 轻触重试'}[kind]});
+    $$('.tab').forEach(t=>t.onclick=()=>{$$('.tab').forEach(x=>x.classList.toggle('active',x===t));$$('.drawer-body>.section').forEach(s=>s.classList.toggle('active',s.dataset.section===t.dataset.tab))});
+    $$('.summary-item').forEach(b=>b.onclick=()=>{app.classList.add('detail');const k=b.dataset.detail;$$('.detail-page').forEach(p=>p.classList.toggle('active',p.dataset.page===k));const page=$(`.detail-page[data-page="${k}"]`),section=$(`.section[data-section="${k}"]`);page.append(section)});
+    $$('.detail-back').forEach(b=>b.onclick=()=>{app.classList.remove('detail');const k=b.closest('.detail-page').dataset.page;$('.drawer-body').append($(`.section[data-section="${k}"]`))});
+    $$('.drawer input,.drawer select').forEach(el=>el.onchange=()=>{if(current==='B')app.classList.add('is-dirty')});
+    $('#apply').onclick=()=>{app.classList.remove('is-dirty');closeDrawer();setStateLoading()};$('#cancel').onclick=()=>{app.classList.remove('is-dirty');closeDrawer()};
+    function setStateLoading(){status.className='status-strip loading';status.querySelector('span').textContent='应用设置并刷新…';loading.classList.add('show');setTimeout(()=>{loading.classList.remove('show');status.className='status-strip';status.querySelector('span').textContent='已更新 · 刚刚'},700)}
+    $('#refreshNow').onclick=setStateLoading;
+    $$('#symbols .chip').forEach(b=>b.onclick=()=>{if(b.textContent==='+')return;$$('#symbols .chip').forEach(x=>x.classList.toggle('active',x===b));$('#symbolTitle').textContent=$('#chartSymbol').textContent=b.textContent;if(current==='A')setStateLoading();else if(current==='B')app.classList.add('is-dirty')});
+    let dragging=false;$('#chart').onpointerdown=e=>{if(drawer.classList.contains('open'))return;dragging=true;$('#toast').classList.add('show');$('#chart').setPointerCapture(e.pointerId)};$('#chart').onpointermove=e=>{if(dragging)$('#crosshair').style.left=`${Math.max(8,Math.min(92,e.offsetX/$('#chart').clientWidth*100))}%`};$('#chart').onpointerup=()=>{dragging=false;setTimeout(()=>$('#toast').classList.remove('show'),350)};
+    $('.edge-handle').onclick=openDrawer;
+    addEventListener('keydown',e=>{if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))return;if(e.key==='ArrowLeft')cycle(-1);if(e.key==='ArrowRight')cycle(1);if(e.key==='Escape')closeDrawer()});
+    renderVariant();
+  </script>
+</body>
+</html>
