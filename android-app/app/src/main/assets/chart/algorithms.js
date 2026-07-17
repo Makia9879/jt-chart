@@ -117,6 +117,15 @@
     return output;
   }
 
+  function enrichMarker(marker, type, strength) {
+    return {
+      ...marker,
+      type,
+      strength,
+      id: `${type}:${marker.time}`,
+    };
+  }
+
   function buildBottomMarkers(oscillator, candles) {
     const markers = [];
     const recentExtremeLookback = 12;
@@ -143,7 +152,7 @@
         && Number.isFinite(priorHigh)
         && current.close > priorHigh;
       if (confirmed) {
-        markers.push({
+        markers.push(enrichMarker({
           time: current.time,
           position: "belowBar",
           color: "#4e8cff",
@@ -151,7 +160,7 @@
           text: "确认抄底",
           score: current.value,
           close: current.close,
-        });
+        }, "bottomConfirmed", "confirmed"));
         lastMarkerIndex = i;
         continue;
       }
@@ -161,7 +170,7 @@
         && current.value > previous.value
         && i - lastMarkerIndex >= markerCooldown;
       if (tentative) {
-        markers.push({
+        markers.push(enrichMarker({
           time: current.time,
           position: "belowBar",
           color: "#ffcc00",
@@ -169,15 +178,82 @@
           text: "试探抄底",
           score: current.value,
           close: current.close,
-        });
+        }, "bottomTentative", "tentative"));
         lastMarkerIndex = i;
       }
     }
     return markers;
   }
 
+  function buildTopMarkers(oscillator, candles) {
+    const markers = [];
+    const recentExtremeLookback = 12;
+    const breakdownLookback = 5;
+    const markerCooldown = 8;
+    let lastMarkerIndex = -Infinity;
+
+    for (let i = 2; i < oscillator.length; i += 1) {
+      const current = oscillator[i];
+      const previous = oscillator[i - 1];
+      const previous2 = oscillator[i - 2];
+      const recentExtremeUp = oscillator
+        .slice(Math.max(0, i - recentExtremeLookback), i + 1)
+        .some((item) => item.isExtremeUp);
+      if (!recentExtremeUp) continue;
+
+      const priorLow = Math.min(
+        ...candles
+          .slice(Math.max(0, current.index - breakdownLookback), current.index)
+          .map((candle) => candle.low),
+      );
+      const confirmed = previous.value >= 0
+        && current.value < 0
+        && Number.isFinite(priorLow)
+        && current.close < priorLow;
+      if (confirmed) {
+        markers.push(enrichMarker({
+          time: current.time,
+          position: "aboveBar",
+          color: "#ff5c5c",
+          shape: "arrowDown",
+          text: "确认逃顶",
+          score: current.value,
+          close: current.close,
+        }, "topConfirmed", "confirmed"));
+        lastMarkerIndex = i;
+        continue;
+      }
+
+      const tentative = current.value > 0
+        && previous.value >= previous2.value
+        && current.value < previous.value
+        && i - lastMarkerIndex >= markerCooldown;
+      if (tentative) {
+        markers.push(enrichMarker({
+          time: current.time,
+          position: "aboveBar",
+          color: "#ff9f0a",
+          shape: "arrowDown",
+          text: "试探逃顶",
+          score: current.value,
+          close: current.close,
+        }, "topTentative", "tentative"));
+        lastMarkerIndex = i;
+      }
+    }
+    return markers;
+  }
+
+  function buildSignalMarkers(oscillator, candles) {
+    return buildBottomMarkers(oscillator, candles)
+      .concat(buildTopMarkers(oscillator, candles))
+      .sort((left, right) => left.time - right.time || left.text.localeCompare(right.text));
+  }
+
   return {
     buildBottomMarkers,
+    buildSignalMarkers,
+    buildTopMarkers,
     calculateBearMarketOverlay,
     calculateJTRegimeOscillator,
     histogramColor,

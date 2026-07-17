@@ -469,6 +469,14 @@ def calculate_jt_regime_oscillator(candles, settings):
     return output
 
 
+def enrich_marker(marker, signal_type, strength):
+    marker = dict(marker)
+    marker["type"] = signal_type
+    marker["strength"] = strength
+    marker["id"] = f"{signal_type}:{marker['time']}"
+    return marker
+
+
 def build_bottom_markers(oscillator, candles):
     markers = []
     recent_extreme_lookback = 12
@@ -496,7 +504,7 @@ def build_bottom_markers(oscillator, candles):
         reclaimed_short_structure = math.isfinite(prior_high) and current["close"] > prior_high
 
         if crossed_above_zero and reclaimed_short_structure:
-            markers.append({
+            markers.append(enrich_marker({
                 "time": current["time"],
                 "position": "belowBar",
                 "color": "#4e8cff",
@@ -504,12 +512,12 @@ def build_bottom_markers(oscillator, candles):
                 "text": "确认抄底",
                 "score": current["value"],
                 "close": current["close"],
-            })
+            }, "bottomConfirmed", "confirmed"))
             last_marker_index = i
             continue
 
         if still_below_zero and first_turn_up and i - last_marker_index >= marker_cooldown:
-            markers.append({
+            markers.append(enrich_marker({
                 "time": current["time"],
                 "position": "belowBar",
                 "color": "#ffcc00",
@@ -517,10 +525,71 @@ def build_bottom_markers(oscillator, candles):
                 "text": "试探抄底",
                 "score": current["value"],
                 "close": current["close"],
-            })
+            }, "bottomTentative", "tentative"))
             last_marker_index = i
 
     return markers
+
+
+def build_top_markers(oscillator, candles):
+    markers = []
+    recent_extreme_lookback = 12
+    breakdown_lookback = 5
+    marker_cooldown = 8
+    last_marker_index = -math.inf
+
+    for i in range(2, len(oscillator)):
+        current = oscillator[i]
+        prev = oscillator[i - 1]
+        prev2 = oscillator[i - 2]
+        recent_extreme_up = any(
+            item["isExtremeUp"]
+            for item in oscillator[max(0, i - recent_extreme_lookback):i + 1]
+        )
+        if not recent_extreme_up:
+            continue
+
+        still_above_zero = current["value"] > 0
+        crossed_below_zero = prev["value"] >= 0 and current["value"] < 0
+        first_turn_down = prev["value"] >= prev2["value"] and current["value"] < prev["value"]
+        candle_index = current["index"]
+        start = max(0, candle_index - breakdown_lookback)
+        prior_low = min((candle["low"] for candle in candles[start:candle_index]), default=math.inf)
+        lost_short_structure = math.isfinite(prior_low) and current["close"] < prior_low
+
+        if crossed_below_zero and lost_short_structure:
+            markers.append(enrich_marker({
+                "time": current["time"],
+                "position": "aboveBar",
+                "color": "#ff5c5c",
+                "shape": "arrowDown",
+                "text": "确认逃顶",
+                "score": current["value"],
+                "close": current["close"],
+            }, "topConfirmed", "confirmed"))
+            last_marker_index = i
+            continue
+
+        if still_above_zero and first_turn_down and i - last_marker_index >= marker_cooldown:
+            markers.append(enrich_marker({
+                "time": current["time"],
+                "position": "aboveBar",
+                "color": "#ff9f0a",
+                "shape": "arrowDown",
+                "text": "试探逃顶",
+                "score": current["value"],
+                "close": current["close"],
+            }, "topTentative", "tentative"))
+            last_marker_index = i
+
+    return markers
+
+
+def build_signal_markers(oscillator, candles):
+    return sorted(
+        build_bottom_markers(oscillator, candles) + build_top_markers(oscillator, candles),
+        key=lambda marker: (marker["time"], marker["text"]),
+    )
 
 
 def signal_key(marker, settings, symbol):

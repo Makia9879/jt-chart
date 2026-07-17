@@ -7,6 +7,8 @@ const test = require("node:test");
 
 const {
   buildBottomMarkers,
+  buildSignalMarkers,
+  buildTopMarkers,
   calculateBearMarketOverlay,
   calculateJTRegimeOscillator,
 } = require("../../main/assets/chart/algorithms.js");
@@ -55,4 +57,36 @@ test("bear WMA v1 fixture weights newest value highest and uses strict bear comp
     closeTo(overlay[index].wma, expected.wmaNumerator / expected.wmaDenominator);
   });
   assert.deepEqual(overlay.map((item) => item.isBear), regression.expected.map((item) => item.isBear));
+});
+
+test("top markers flag tentative and confirmed exit signals above bars", () => {
+  const candles = Array.from({ length: 12 }, (_, index) => ({
+    time: 1700000000 + index * 3600,
+    high: 110 - index,
+    low: 100 - index,
+    close: 105 - index,
+  }));
+  candles[8].close = 90;
+  const oscillator = [
+    { index: 0, time: candles[0].time, value: 0.1, isExtremeUp: false, close: candles[0].close },
+    { index: 1, time: candles[1].time, value: 0.2, isExtremeUp: false, close: candles[1].close },
+    { index: 2, time: candles[2].time, value: 0.5, isExtremeUp: true, close: candles[2].close },
+    { index: 3, time: candles[3].time, value: 0.8, isExtremeUp: false, close: candles[3].close },
+    { index: 4, time: candles[4].time, value: 0.6, isExtremeUp: false, close: candles[4].close },
+    { index: 5, time: candles[5].time, value: 0.4, isExtremeUp: false, close: candles[5].close },
+    { index: 6, time: candles[6].time, value: 0.2, isExtremeUp: false, close: candles[6].close },
+    { index: 7, time: candles[7].time, value: 0.1, isExtremeUp: false, close: candles[7].close },
+    { index: 8, time: candles[8].time, value: -0.2, isExtremeUp: false, close: candles[8].close },
+  ];
+
+  const markers = buildTopMarkers(oscillator, candles);
+
+  assert.deepEqual(
+    markers.map(({ text, position, shape, type, strength }) => ({ text, position, shape, type, strength })),
+    [
+      { text: "试探逃顶", position: "aboveBar", shape: "arrowDown", type: "topTentative", strength: "tentative" },
+      { text: "确认逃顶", position: "aboveBar", shape: "arrowDown", type: "topConfirmed", strength: "confirmed" },
+    ],
+  );
+  assert.equal(buildSignalMarkers(oscillator, candles).at(-1).text, "确认逃顶");
 });
