@@ -1,5 +1,8 @@
 package com.makia.jtchart
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -19,6 +22,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestNotificationPermissionIfNeeded()
         enableEdgeToEdge()
         setContent {
             val state by chartViewModel.state.collectAsStateWithLifecycle()
@@ -41,5 +45,15 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         chartViewModel.onForegroundChanged(false, configurationChange = isChangingConfigurations)
         super.onStop()
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_PERMISSION_REQUEST)
+    }
+
+    companion object {
+        private const val NOTIFICATION_PERMISSION_REQUEST = 1001
     }
 }

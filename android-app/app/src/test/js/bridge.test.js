@@ -84,9 +84,11 @@ test("valid snapshot is calculated, rendered atomically, then acknowledged", () 
     queryKey: message.payload.queryKey,
     datasetFingerprint: message.payload.datasetFingerprint,
     candleCount: 12,
+    latestCandleTime: 1700039600,
     latestRegime: 0,
     markerCount: 0,
     latestMarkerTime: null,
+    signals: [],
     isExtremeUp: false,
     isExtremeDown: false,
   })]);

@@ -71,6 +71,7 @@ internal fun AppSettings.toProto(): AppSettingsProto = AppSettingsProto.newBuild
     .setSmoothLength(algorithm.smoothLength)
     .setBearWmaLength(algorithm.bearWmaLength)
     .setAutoRefreshSeconds(autoRefreshSeconds)
+    .setSignalNotificationsEnabled(signalNotificationsEnabled)
     .build()
 
 internal fun AppSettingsProto.toDomain(): AppSettings {
@@ -91,5 +92,10 @@ internal fun AppSettingsProto.toDomain(): AppSettings {
             bearWmaLength = bearWmaLength,
         ),
         autoRefreshSeconds = autoRefreshSeconds,
+        signalNotificationsEnabled = if (hasSignalNotificationsEnabled()) {
+            signalNotificationsEnabled
+        } else {
+            AppSettings().signalNotificationsEnabled
+        },
     )
 }

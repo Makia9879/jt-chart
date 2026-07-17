@@ -29,6 +29,7 @@ import androidx.webkit.WebMessagePortCompat
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewCompat
 import com.makia.jtchart.domain.settings.AlgorithmSettings
+import com.makia.jtchart.domain.signal.ChartSignal
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -44,7 +45,7 @@ fun ChartWebView(
     interactionEnabled: Boolean,
     onReady: (Boolean) -> Unit,
     onRenderDispatched: (Long, Long) -> Unit,
-    onRenderAck: (Long, Long) -> Unit,
+    onRenderAck: (Long, Long, List<ChartSignal>, Long?) -> Unit,
     onViewport: (Long, Long, Double, Double) -> Unit,
     onViewportFlush: () -> Unit,
     onRuntimeFailure: (Long?, Long?) -> Unit,
@@ -141,7 +142,7 @@ private class ChartWebController(
     context: android.content.Context,
     private val onReadyChanged: (Boolean) -> Unit,
     private val onRenderDispatched: (Long, Long) -> Unit,
-    private val onRenderAck: (Long, Long) -> Unit,
+    private val onRenderAck: (Long, Long, List<ChartSignal>, Long?) -> Unit,
     private val onViewport: (Long, Long, Double, Double) -> Unit,
     private val onRuntimeFailure: (Long?, Long?) -> Unit,
 ) {
@@ -238,7 +239,13 @@ private class ChartWebController(
                             onReadyChanged(true)
                         }
                         "chart.renderAck" -> {
-                            onRenderAck(generation, renderRevision)
+                            val payload = envelope.optJSONObject("payload")
+                            onRenderAck(
+                                generation,
+                                renderRevision,
+                                payload?.optSignalList().orEmpty(),
+                                payload?.takeIf { !it.isNull("latestCandleTime") }?.optLong("latestCandleTime"),
+                            )
                             post("chart.requestViewport", generation, renderRevision, JSONObject())
                         }
                         "chart.viewportChanged", "chart.viewportCaptured" -> {
@@ -361,3 +368,29 @@ private fun AlgorithmSettings.toJson(): JSONObject = JSONObject()
     .put("extThresh", extremeThreshold)
     .put("smoothLen", smoothLength)
     .put("bearWmaLength", bearWmaLength)
+
+private fun JSONObject.optSignalList(): List<ChartSignal> {
+    val items = optJSONArray("signals") ?: return emptyList()
+    return buildList {
+        for (index in 0 until items.length()) {
+            val item = items.optJSONObject(index) ?: continue
+            val id = item.optString("id").takeIf(String::isNotBlank) ?: continue
+            val text = item.optString("text").takeIf(String::isNotBlank) ?: continue
+            val time = item.optLong("time", -1)
+            val score = item.optDouble("score", Double.NaN)
+            val close = item.optDouble("close", Double.NaN)
+            if (time < 0 || !score.isFinite() || !close.isFinite()) continue
+            add(
+                ChartSignal(
+                    id = id,
+                    time = time,
+                    text = text,
+                    type = item.optString("type", "unknown"),
+                    strength = item.optString("strength", "unknown"),
+                    score = score,
+                    close = close,
+                ),
+            )
+        }
+    }
+}

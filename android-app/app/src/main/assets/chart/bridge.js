@@ -106,7 +106,9 @@
     });
 
     const oscillator = algorithms.calculateJTRegimeOscillator(candles, payload.settings);
-    const markers = algorithms.buildBottomMarkers(oscillator, candles);
+    const markers = algorithms.buildSignalMarkers
+      ? algorithms.buildSignalMarkers(oscillator, candles)
+      : algorithms.buildBottomMarkers(oscillator, candles);
     const bearOverlay = algorithms.calculateBearMarketOverlay(candles, payload.settings.bearWmaLength);
     const outputs = oscillator.flatMap((item) => [item.value, item.z1, item.zMom])
       .concat(bearOverlay.flatMap((item) => [item.close, item.wma]));
@@ -233,9 +235,19 @@
             queryKey: snapshot.queryKey,
             datasetFingerprint: snapshot.datasetFingerprint,
             candleCount: snapshot.candles.length,
+            latestCandleTime: snapshot.candles.at(-1)?.time ?? null,
             latestRegime: latest ? latest.value : null,
             markerCount: snapshot.markers.length,
             latestMarkerTime: latestMarker ? latestMarker.time : null,
+            signals: snapshot.markers.map((marker) => ({
+              id: marker.id || `${marker.text}:${marker.time}`,
+              time: marker.time,
+              text: marker.text,
+              type: marker.type || "unknown",
+              strength: marker.strength || "unknown",
+              score: marker.score,
+              close: marker.close,
+            })),
             isExtremeUp: latest ? latest.isExtremeUp : false,
             isExtremeDown: latest ? latest.isExtremeDown : false,
           }));
