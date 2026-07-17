@@ -10,6 +10,9 @@ import com.makia.jtchart.domain.market.MarketResult
 import com.makia.jtchart.domain.market.Query
 import com.makia.jtchart.domain.settings.AppSettings
 import com.makia.jtchart.domain.settings.SettingsStore
+import com.makia.jtchart.domain.signal.ChartSignal
+import com.makia.jtchart.notifications.NoopSignalNotifier
+import com.makia.jtchart.notifications.SignalNotifier
 import com.makia.jtchart.persistence.market.CandleSnapshot
 import com.makia.jtchart.persistence.market.SnapshotCache
 import com.makia.jtchart.persistence.market.StoredSnapshot
@@ -72,6 +75,7 @@ class ChartViewModel(
     private val repository: MarketRepository,
     private val settingsStore: SettingsStore,
     private val snapshotCache: SnapshotCache,
+    private val signalNotifier: SignalNotifier = NoopSignalNotifier,
     private val nowEpochMs: () -> Long = System::currentTimeMillis,
 ) : ViewModel() {
     private val generation = GenerationCoordinator()
@@ -199,10 +203,26 @@ class ChartViewModel(
         }
     }
 
-    fun onRenderAck(generation: Long, renderRevision: Long) {
+    fun onRenderAck(
+        generation: Long,
+        renderRevision: Long,
+        signals: List<ChartSignal> = emptyList(),
+        latestCandleTime: Long? = null,
+    ) {
         if (!matchesRender(generation, renderRevision)) return
+        notifyLatestSignals(signals, latestCandleTime)
         runtimeRecoveryUsed = false
         _state.update { it.copy(chartRuntime = ChartRuntimeState.STABLE) }
+    }
+
+    private fun notifyLatestSignals(signals: List<ChartSignal>, latestCandleTime: Long?) {
+        val current = state.value
+        if (!current.appliedSettings.signalNotificationsEnabled) return
+        val query = current.displayedDataset?.snapshot?.query ?: return
+        val latestTime = latestCandleTime ?: return
+        signals.asSequence()
+            .filter { it.time == latestTime }
+            .forEach { signalNotifier.notify(query, it) }
     }
 
     fun onChartRuntimeFailure(generation: Long?, renderRevision: Long?) {
@@ -454,10 +474,11 @@ class ChartViewModel(
         private val repository: MarketRepository,
         private val settingsStore: SettingsStore,
         private val snapshotCache: SnapshotCache,
+        private val signalNotifier: SignalNotifier = NoopSignalNotifier,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            ChartViewModel(repository, settingsStore, snapshotCache) as T
+            ChartViewModel(repository, settingsStore, snapshotCache, signalNotifier) as T
     }
 }
 

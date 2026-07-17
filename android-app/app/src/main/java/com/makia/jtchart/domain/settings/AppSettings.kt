@@ -31,6 +31,7 @@ data class AppSettings(
     val limit: Int = Query.DEFAULT_LIMIT,
     val algorithm: AlgorithmSettings = AlgorithmSettings(),
     val autoRefreshSeconds: Int = 0,
+    val signalNotificationsEnabled: Boolean = true,
 ) {
     init {
         require(schemaVersion >= 1)

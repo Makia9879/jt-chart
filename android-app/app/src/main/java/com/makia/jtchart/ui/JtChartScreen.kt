@@ -29,6 +29,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -387,6 +388,17 @@ private fun RefreshSettings(settings: AppSettings, update: ((AppSettings) -> App
             modifier = Modifier.semantics {
                 contentDescription = if (seconds == 0) "关闭自动刷新" else "自动刷新 $seconds 秒"
             },
+        )
+    }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("信号通知", style = MaterialTheme.typography.titleMedium)
+            Text("最新 K 线出现抄底或逃顶信号时弹出手机通知。")
+        }
+        Switch(
+            checked = settings.signalNotificationsEnabled,
+            onCheckedChange = { enabled -> update { it.copy(signalNotificationsEnabled = enabled) } },
+            modifier = Modifier.semantics { contentDescription = "开启或关闭信号通知" },
         )
     }
     Text("仅在 App 前台、屏幕未锁定且图表可见时刷新。回到前台只补刷一次。")

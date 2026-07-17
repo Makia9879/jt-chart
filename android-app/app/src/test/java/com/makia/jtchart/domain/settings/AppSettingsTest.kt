@@ -22,5 +22,6 @@ class AppSettingsTest {
         assertEquals(500, settings.limit)
         assertEquals(200, settings.algorithm.bearWmaLength)
         assertEquals(0, settings.autoRefreshSeconds)
+        assertEquals(true, settings.signalNotificationsEnabled)
     }
 }

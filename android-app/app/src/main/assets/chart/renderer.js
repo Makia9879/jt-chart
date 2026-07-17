@@ -45,9 +45,14 @@
     let overlayFrame = null;
     let priceRangeListener;
     let oscillatorRangeListener;
+    let priceCrosshairListener;
+    let oscillatorCrosshairListener;
     let viewportChangedListener = function () {};
     let rendering = false;
+    let syncingCrosshair = false;
     const inputEvents = ["pointermove", "pointerup", "wheel", "dblclick"];
+    const candleByTime = new Map();
+    const oscillatorByTime = new Map();
 
     function chartOptions(container, extra) {
       return {
@@ -67,6 +72,30 @@
         overlayFrame = null;
         drawOverlay();
       });
+    }
+
+    function mapKey(time) {
+      return String(time);
+    }
+
+    function syncCrosshair(source, target, targetSeries, targetValueForTime, param) {
+      if (syncingCrosshair) return;
+      syncingCrosshair = true;
+      try {
+        if (!param || param.time == null) {
+          target.clearCrosshairPosition();
+          return;
+        }
+        const value = targetValueForTime(param.time);
+        if (!Number.isFinite(value)) {
+          target.clearCrosshairPosition();
+          return;
+        }
+        target.setCrosshairPosition(value, param.time, targetSeries);
+      } finally {
+        syncingCrosshair = false;
+      }
+      if (source === oscillatorChart) requestOverlayDraw();
     }
 
     function initialize() {
@@ -104,12 +133,36 @@
         changingOscillator = true;
         priceChart.timeScale().setVisibleLogicalRange(range);
         changingOscillator = false;
+        requestOverlayDraw();
         if (!rendering) viewportChangedListener({ logicalFrom: range.from, logicalTo: range.to });
+      };
+      priceCrosshairListener = (param) => {
+        syncCrosshair(
+          priceChart,
+          oscillatorChart,
+          oscillatorSeries,
+          (time) => oscillatorByTime.get(mapKey(time))?.value,
+          param,
+        );
+        requestOverlayDraw();
+      };
+      oscillatorCrosshairListener = (param) => {
+        syncCrosshair(
+          oscillatorChart,
+          priceChart,
+          candleSeries,
+          (time) => candleByTime.get(mapKey(time))?.close,
+          param,
+        );
       };
       priceChart.timeScale().subscribeVisibleLogicalRangeChange(priceRangeListener);
       oscillatorChart.timeScale().subscribeVisibleLogicalRangeChange(oscillatorRangeListener);
-      priceChart.subscribeCrosshairMove(requestOverlayDraw);
-      inputEvents.forEach((name) => priceContainer.addEventListener(name, requestOverlayDraw, { passive: true }));
+      priceChart.subscribeCrosshairMove(priceCrosshairListener);
+      oscillatorChart.subscribeCrosshairMove(oscillatorCrosshairListener);
+      inputEvents.forEach((name) => {
+        priceContainer.addEventListener(name, requestOverlayDraw, { passive: true });
+        oscillatorContainer.addEventListener(name, requestOverlayDraw, { passive: true });
+      });
       resizeObserver = new ResizeObserver(() => {
         priceChart.applyOptions({ width: priceContainer.clientWidth, height: priceContainer.clientHeight });
         oscillatorChart.applyOptions({ width: oscillatorContainer.clientWidth, height: oscillatorContainer.clientHeight });
@@ -127,6 +180,10 @@
     }
 
     function applyData(snapshot) {
+      candleByTime.clear();
+      oscillatorByTime.clear();
+      snapshot.candles.forEach((candle) => candleByTime.set(mapKey(candle.time), candle));
+      snapshot.oscillator.forEach((item) => oscillatorByTime.set(mapKey(item.time), item));
       candleSeries.applyOptions({
         priceFormat: {
           type: "price",
@@ -268,13 +325,19 @@
       resizeObserver.disconnect();
       priceChart.timeScale().unsubscribeVisibleLogicalRangeChange(priceRangeListener);
       oscillatorChart.timeScale().unsubscribeVisibleLogicalRangeChange(oscillatorRangeListener);
-      priceChart.unsubscribeCrosshairMove(requestOverlayDraw);
-      inputEvents.forEach((name) => priceContainer.removeEventListener(name, requestOverlayDraw));
+      priceChart.unsubscribeCrosshairMove(priceCrosshairListener);
+      oscillatorChart.unsubscribeCrosshairMove(oscillatorCrosshairListener);
+      inputEvents.forEach((name) => {
+        priceContainer.removeEventListener(name, requestOverlayDraw);
+        oscillatorContainer.removeEventListener(name, requestOverlayDraw);
+      });
       priceChart.remove();
       oscillatorChart.remove();
       priceChart = null;
       oscillatorChart = null;
       currentSnapshot = null;
+      candleByTime.clear();
+      oscillatorByTime.clear();
     }
 
     function setViewportChangedListener(listener) {

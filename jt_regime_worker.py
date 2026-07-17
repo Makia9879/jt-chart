@@ -8,7 +8,7 @@ from jt_shared import (
     SOURCE_CONFIGS,
     WORKER_STATUS_FILE,
     atomic_write_json,
-    build_bottom_markers,
+    build_signal_markers,
     calculate_jt_regime_oscillator,
     closed_candles,
     fetch_remote_klines,
@@ -35,13 +35,25 @@ def marker_message(marker, settings, symbol):
         rule = "极端下跌后，Regime Score 上穿 0 轴且收盘价突破近 5 根结构高点。"
         reminder = "这是确认信号，仍需结合仓位和风险控制。"
         icon = "🔵"
-    else:
+        title = "JT 抄底信号"
+    elif signal_name == "试探抄底":
         rule = "极端下跌后，Regime Score 在 0 轴下方首次拐头。"
         reminder = "这是试探信号，不是确认买点。"
         icon = "🟡"
+        title = "JT 抄底信号"
+    elif signal_name == "确认逃顶":
+        rule = "极端上涨后，Regime Score 下穿 0 轴且收盘价跌破近 5 根结构低点。"
+        reminder = "这是确认信号，适合检查止盈、减仓或风险敞口。"
+        icon = "🔴"
+        title = "JT 逃顶信号"
+    else:
+        rule = "极端上涨后，Regime Score 在 0 轴上方首次拐头向下。"
+        reminder = "这是早期风险信号，建议提高警惕并等待确认。"
+        icon = "🟠"
+        title = "JT 逃顶信号"
 
     return "\n".join([
-        f"{icon} JT 抄底信号",
+        f"{icon} {title}",
         "",
         f"信号: {signal_name}",
         f"币对: {symbol}",
@@ -87,11 +99,11 @@ def scan_once(now=None):
             continue
 
         oscillator = calculate_jt_regime_oscillator(candles, settings)
-        markers = build_bottom_markers(oscillator, candles)
+        markers = build_signal_markers(oscillator, candles)
         baseline = int(monitor.get("baseline", {}).get(symbol, 0))
         candidates = [
             marker for marker in markers
-            if marker["time"] > baseline and marker["text"] in {"试探抄底", "确认抄底"}
+            if marker["time"] > baseline and marker["text"] in {"试探抄底", "确认抄底", "试探逃顶", "确认逃顶"}
         ]
 
         for marker in candidates:

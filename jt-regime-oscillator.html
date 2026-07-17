@@ -1330,6 +1330,15 @@
       return output;
     }
 
+    function enrichMarker(marker, type, strength) {
+      return {
+        ...marker,
+        type,
+        strength,
+        id: `${type}:${marker.time}`
+      };
+    }
+
     function buildBottomMarkers(oscillator, candles) {
       const markers = [];
       const recentExtremeLookback = 12;
@@ -1357,7 +1366,7 @@
         const reclaimedShortStructure = Number.isFinite(priorHigh) && current.close > priorHigh;
 
         if (crossedAboveZero && reclaimedShortStructure) {
-          markers.push({
+          markers.push(enrichMarker({
             time: current.time,
             position: "belowBar",
             color: "#4e8cff",
@@ -1365,13 +1374,13 @@
             text: "确认抄底",
             score: current.value,
             close: current.close
-          });
+          }, "bottomConfirmed", "confirmed"));
           lastMarkerIndex = i;
           continue;
         }
 
         if (stillBelowZero && firstTurnUp && i - lastMarkerIndex >= markerCooldown) {
-          markers.push({
+          markers.push(enrichMarker({
             time: current.time,
             position: "belowBar",
             color: "#ffcc00",
@@ -1379,7 +1388,7 @@
             text: "试探抄底",
             score: current.value,
             close: current.close
-          });
+          }, "bottomTentative", "tentative"));
           lastMarkerIndex = i;
         }
       }
@@ -1387,8 +1396,71 @@
       return markers;
     }
 
+    function buildTopMarkers(oscillator, candles) {
+      const markers = [];
+      const recentExtremeLookback = 12;
+      const breakdownLookback = 5;
+      const markerCooldown = 8;
+      let lastMarkerIndex = -Infinity;
+
+      for (let i = 2; i < oscillator.length; i++) {
+        const current = oscillator[i];
+        const prev = oscillator[i - 1];
+        const prev2 = oscillator[i - 2];
+
+        const recentExtremeUp = oscillator
+          .slice(Math.max(0, i - recentExtremeLookback), i + 1)
+          .some((item) => item.isExtremeUp);
+
+        if (!recentExtremeUp) continue;
+
+        const stillAboveZero = current.value > 0;
+        const crossedBelowZero = prev.value >= 0 && current.value < 0;
+        const firstTurnDown = prev.value >= prev2.value && current.value < prev.value;
+        const candleIndex = current.index;
+        const from = Math.max(0, candleIndex - breakdownLookback);
+        const priorLow = Math.min(...candles.slice(from, candleIndex).map((candle) => candle.low));
+        const lostShortStructure = Number.isFinite(priorLow) && current.close < priorLow;
+
+        if (crossedBelowZero && lostShortStructure) {
+          markers.push(enrichMarker({
+            time: current.time,
+            position: "aboveBar",
+            color: "#ff5c5c",
+            shape: "arrowDown",
+            text: "确认逃顶",
+            score: current.value,
+            close: current.close
+          }, "topConfirmed", "confirmed"));
+          lastMarkerIndex = i;
+          continue;
+        }
+
+        if (stillAboveZero && firstTurnDown && i - lastMarkerIndex >= markerCooldown) {
+          markers.push(enrichMarker({
+            time: current.time,
+            position: "aboveBar",
+            color: "#ff9f0a",
+            shape: "arrowDown",
+            text: "试探逃顶",
+            score: current.value,
+            close: current.close
+          }, "topTentative", "tentative"));
+          lastMarkerIndex = i;
+        }
+      }
+
+      return markers;
+    }
+
+    function buildSignalMarkers(oscillator, candles) {
+      return buildBottomMarkers(oscillator, candles)
+        .concat(buildTopMarkers(oscillator, candles))
+        .sort((left, right) => left.time - right.time || left.text.localeCompare(right.text));
+    }
+
     function latestMarkerSummary(markers) {
-      if (markers.length === 0) return "当前无抄底标记";
+      if (markers.length === 0) return "当前无信号标记";
       const latest = markers[markers.length - 1];
       return `最近 ${latest.text} ${formatUtc8ChartTime(latest.time, true)}`;
     }
@@ -1578,12 +1650,12 @@
         if (candleCountError) throw new Error(candleCountError);
 
         const oscillator = calculateJTRegimeOscillator(candles, settings);
-        const bottomMarkers = buildBottomMarkers(oscillator, candles);
+        const signalMarkers = buildSignalMarkers(oscillator, candles);
         state.bearMarketOverlay = calculateBearMarketOverlay(candles, settings.bearWmaLength);
 
         applyPricePrecision(candles);
         state.candleSeries.setData(candles);
-        state.candleSeries.setMarkers(bottomMarkers);
+        state.candleSeries.setMarkers(signalMarkers);
         state.oscSeries.setData(oscillator.map((item) => ({
           time: item.time,
           value: item.value,
@@ -1597,7 +1669,7 @@
         const latest = oscillator[oscillator.length - 1];
         const latestScore = latest ? latest.value.toFixed(2) : "n/a";
         const warning = latest?.isExtremeUp ? " · 短期过热" : latest?.isExtremeDown ? " · 短期恐慌" : "";
-        setStatus(`${candles.length} 根 K 线 · 最新 Regime ${latestScore} · 抄底标记 ${bottomMarkers.length} · ${latestMarkerSummary(bottomMarkers)}${warning}${refreshLabel()}`);
+        setStatus(`${candles.length} 根 K 线 · 最新 Regime ${latestScore} · 信号标记 ${signalMarkers.length} · ${latestMarkerSummary(signalMarkers)}${warning}${refreshLabel()}`);
       } catch (error) {
         setStatus(error instanceof Error ? error.message : "加载失败", true);
       } finally {

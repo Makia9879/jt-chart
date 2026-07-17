@@ -11,6 +11,8 @@ import jt_shared
 from jt_shared import (
     atomic_write_json,
     build_bottom_markers,
+    build_signal_markers,
+    build_top_markers,
     calculate_jt_regime_oscillator,
     closed_candles,
     read_json_file,
@@ -154,6 +156,40 @@ class JTRegimeTests(unittest.TestCase):
             ("试探抄底", 1700129600, -2.790339, 102.3),
             ("确认抄底", 1700169200, 0.061238, 93.0),
         ])
+
+    def test_top_markers_are_emitted_as_exit_signals(self):
+        candles = [
+            {
+                "time": 1700000000 + index * 3600,
+                "high": 110 - index,
+                "low": 100 - index,
+                "close": 105 - index,
+            }
+            for index in range(12)
+        ]
+        candles[8]["close"] = 90
+        oscillator = [
+            {"index": 0, "time": candles[0]["time"], "value": 0.1, "isExtremeUp": False, "isExtremeDown": False, "close": candles[0]["close"]},
+            {"index": 1, "time": candles[1]["time"], "value": 0.2, "isExtremeUp": False, "isExtremeDown": False, "close": candles[1]["close"]},
+            {"index": 2, "time": candles[2]["time"], "value": 0.5, "isExtremeUp": True, "isExtremeDown": False, "close": candles[2]["close"]},
+            {"index": 3, "time": candles[3]["time"], "value": 0.8, "isExtremeUp": False, "isExtremeDown": False, "close": candles[3]["close"]},
+            {"index": 4, "time": candles[4]["time"], "value": 0.6, "isExtremeUp": False, "isExtremeDown": False, "close": candles[4]["close"]},
+            {"index": 5, "time": candles[5]["time"], "value": 0.4, "isExtremeUp": False, "isExtremeDown": False, "close": candles[5]["close"]},
+            {"index": 6, "time": candles[6]["time"], "value": 0.2, "isExtremeUp": False, "isExtremeDown": False, "close": candles[6]["close"]},
+            {"index": 7, "time": candles[7]["time"], "value": 0.1, "isExtremeUp": False, "isExtremeDown": False, "close": candles[7]["close"]},
+            {"index": 8, "time": candles[8]["time"], "value": -0.2, "isExtremeUp": False, "isExtremeDown": False, "close": candles[8]["close"]},
+        ]
+
+        markers = build_top_markers(oscillator, candles)
+
+        self.assertEqual(
+            [(marker["text"], marker["position"], marker["shape"], marker["type"], marker["strength"]) for marker in markers],
+            [
+                ("试探逃顶", "aboveBar", "arrowDown", "topTentative", "tentative"),
+                ("确认逃顶", "aboveBar", "arrowDown", "topConfirmed", "confirmed"),
+            ],
+        )
+        self.assertEqual(build_signal_markers(oscillator, candles)[-1]["text"], "确认逃顶")
 
     def test_python_formula_matches_javascript_page_semantics(self):
         if shutil.which("node") is None:

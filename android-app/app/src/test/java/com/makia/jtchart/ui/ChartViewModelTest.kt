@@ -9,6 +9,8 @@ import com.makia.jtchart.domain.market.Query
 import com.makia.jtchart.domain.settings.AppSettings
 import com.makia.jtchart.domain.settings.AlgorithmSettings
 import com.makia.jtchart.domain.settings.SettingsStore
+import com.makia.jtchart.domain.signal.ChartSignal
+import com.makia.jtchart.notifications.SignalNotifier
 import com.makia.jtchart.persistence.market.CandleSnapshot
 import com.makia.jtchart.persistence.market.SnapshotCache
 import com.makia.jtchart.persistence.market.SnapshotCanonicalizer
@@ -319,6 +321,87 @@ class ChartViewModelTest {
         assertEquals(1, repository.requests.size)
     }
 
+    @Test
+    fun `render ack notifies only latest candle signals when enabled`() = runTest(dispatcher) {
+        val settings = AppSettings()
+        val notifier = FakeSignalNotifier()
+        val viewModel = ChartViewModel(
+            QueueRepository().apply { enqueuePending() },
+            FakeSettingsStore(settings),
+            FakeCache(stored(settings.query(), 100)),
+            notifier,
+        )
+        runCurrent()
+        val state = viewModel.state.value
+
+        viewModel.onRenderAck(
+            state.requestGeneration,
+            state.renderRevision,
+            listOf(
+                signal("bottomConfirmed:100", 100, "确认抄底"),
+                signal("topConfirmed:200", 200, "确认逃顶"),
+            ),
+            latestCandleTime = 200,
+        )
+
+        assertEquals(listOf("确认逃顶"), notifier.sent.map { it.second.text })
+        assertEquals(settings.query(), notifier.sent.single().first)
+    }
+
+    @Test
+    fun `render ack can notify every supported signal type on latest candle`() = runTest(dispatcher) {
+        val settings = AppSettings()
+        val notifier = FakeSignalNotifier()
+        val viewModel = ChartViewModel(
+            QueueRepository().apply { enqueuePending() },
+            FakeSettingsStore(settings),
+            FakeCache(stored(settings.query(), 100)),
+            notifier,
+        )
+        runCurrent()
+        val state = viewModel.state.value
+
+        viewModel.onRenderAck(
+            state.requestGeneration,
+            state.renderRevision,
+            listOf(
+                signal("bottomTentative:200", 200, "试探抄底"),
+                signal("bottomConfirmed:200", 200, "确认抄底"),
+                signal("topTentative:200", 200, "试探逃顶"),
+                signal("topConfirmed:200", 200, "确认逃顶"),
+            ),
+            latestCandleTime = 200,
+        )
+
+        assertEquals(
+            listOf("试探抄底", "确认抄底", "试探逃顶", "确认逃顶"),
+            notifier.sent.map { it.second.text },
+        )
+    }
+
+    @Test
+    fun `signal notifications setting disables render ack notifications`() = runTest(dispatcher) {
+        val settings = AppSettings(signalNotificationsEnabled = false)
+        val notifier = FakeSignalNotifier()
+        val viewModel = ChartViewModel(
+            QueueRepository().apply { enqueuePending() },
+            FakeSettingsStore(settings),
+            FakeCache(stored(settings.query(), 100)),
+            notifier,
+        )
+        runCurrent()
+        val state = viewModel.state.value
+
+        viewModel.onRenderAck(
+            state.requestGeneration,
+            state.renderRevision,
+            listOf(signal("topTentative:200", 200, "试探逃顶")),
+            latestCandleTime = 200,
+        )
+
+        assertTrue(notifier.sent.isEmpty())
+    }
+
     private fun stored(query: Query, fetchedAt: Long): StoredSnapshot = SnapshotCanonicalizer.store(
         CandleSnapshot(query, candles(201), fetchedAt),
         fetchedAt,
@@ -328,6 +411,16 @@ class ChartViewModelTest {
 
     private fun candles(count: Int, close: String = "11"): List<Candle> = (0 until count).map { index ->
         Candle(index.toLong(), price("10"), price("13"), price("9"), price(close), null, null)
+    }
+
+    private fun signal(id: String, time: Long, text: String): ChartSignal =
+        ChartSignal(id, time, text, "test", "confirmed", 1.25, 100.0)
+}
+
+private class FakeSignalNotifier : SignalNotifier {
+    val sent = mutableListOf<Pair<Query, ChartSignal>>()
+    override fun notify(query: Query, signal: ChartSignal) {
+        sent += query to signal
     }
 }
 

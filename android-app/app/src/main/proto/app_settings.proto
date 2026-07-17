@@ -18,4 +18,5 @@ message AppSettingsProto {
   uint32 smooth_length = 11;
   uint32 bear_wma_length = 12;
   uint32 auto_refresh_seconds = 13;
+  optional bool signal_notifications_enabled = 14;
 }
