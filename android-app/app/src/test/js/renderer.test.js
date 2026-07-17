@@ -7,8 +7,11 @@ const { createChartRenderer } = require("../../main/assets/chart/renderer.js");
 
 function fakeChart() {
   let rangeListener;
+  let crosshairListener;
   let currentRange = { from: 2, to: 8 };
   const setRanges = [];
+  const crosshairPositions = [];
+  const clearedCrosshairs = [];
   const timeScale = {
     subscribeVisibleLogicalRangeChange(listener) { rangeListener = listener; },
     unsubscribeVisibleLogicalRangeChange() {},
@@ -24,11 +27,16 @@ function fakeChart() {
       addCandlestickSeries() { return { setData() {}, setMarkers() {}, applyOptions() {}, priceToCoordinate() {} }; },
       addHistogramSeries() { return { setData() {}, createPriceLine() {} }; },
       applyOptions() {},
-      subscribeCrosshairMove() {},
+      subscribeCrosshairMove(listener) { crosshairListener = listener; },
       unsubscribeCrosshairMove() {},
+      setCrosshairPosition(price, time, series) { crosshairPositions.push({ price, time, series }); },
+      clearCrosshairPosition() { clearedCrosshairs.push(true); },
       remove() {},
     },
     emitRange(range) { rangeListener(range); },
+    emitCrosshair(param) { crosshairListener(param); },
+    clearedCrosshairs,
+    crosshairPositions,
     setRanges,
     timeScale,
   };
@@ -42,7 +50,7 @@ function createRenderer(charts) {
       LineStyle: { Dashed: 2 },
     },
     priceContainer: { clientWidth: 400, clientHeight: 300, addEventListener() {}, removeEventListener() {} },
-    oscillatorContainer: { clientWidth: 400, clientHeight: 160 },
+    oscillatorContainer: { clientWidth: 400, clientHeight: 160, addEventListener() {}, removeEventListener() {} },
     overlayCanvas: { getContext() { return null; } },
     ResizeObserver: class { observe() {} disconnect() {} },
     requestAnimationFrame(callback) { callback(); return 1; },
@@ -87,4 +95,46 @@ test("a viewport within two candles of the old right edge follows realtime", () 
 
   assert.equal(price.timeScale.scrollToRealTimeCalls, 1);
   assert.equal(oscillator.timeScale.scrollToRealTimeCalls, 1);
+});
+
+test("price crosshair drives oscillator crosshair at the same time", () => {
+  const price = fakeChart();
+  const oscillator = fakeChart();
+  const renderer = createRenderer([price, oscillator]);
+  renderer.initialize();
+  renderer.renderSnapshot(snapshot(4, "fitContent"));
+
+  price.emitCrosshair({ time: 2 });
+
+  assert.deepEqual(oscillator.crosshairPositions.map(({ price, time }) => ({ price, time })), [
+    { price: 0, time: 2 },
+  ]);
+});
+
+test("oscillator crosshair drives price crosshair at the same time", () => {
+  const price = fakeChart();
+  const oscillator = fakeChart();
+  const renderer = createRenderer([price, oscillator]);
+  renderer.initialize();
+  renderer.renderSnapshot(snapshot(4, "fitContent"));
+
+  oscillator.emitCrosshair({ time: 3 });
+
+  assert.deepEqual(price.crosshairPositions.map(({ price, time }) => ({ price, time })), [
+    { price: 2, time: 3 },
+  ]);
+});
+
+test("missing crosshair time clears the paired chart", () => {
+  const price = fakeChart();
+  const oscillator = fakeChart();
+  const renderer = createRenderer([price, oscillator]);
+  renderer.initialize();
+  renderer.renderSnapshot(snapshot(4, "fitContent"));
+
+  price.emitCrosshair({});
+  oscillator.emitCrosshair({});
+
+  assert.equal(oscillator.clearedCrosshairs.length, 1);
+  assert.equal(price.clearedCrosshairs.length, 1);
 });
