@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 import jt_shared
+import jt_regime_worker
 from jt_shared import (
     atomic_write_json,
     build_bottom_markers,
@@ -432,6 +433,140 @@ console.log(JSON.stringify({ oscillator, markers }));
             self.assertEqual(jt_shared.configured_notification_channels(), ["wecom"])
         with mock.patch.object(jt_shared, "ELECTRICWAVE_TOKEN", "secret-token"):
             self.assertEqual(jt_shared.configured_notification_channels(), ["wecom", "electricwave"])
+
+    def test_worker_continues_after_one_symbol_fetch_failure(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            monitor_path = Path(tmpdir) / "monitor.json"
+            status_path = Path(tmpdir) / "worker-status.json"
+            monitor = {
+                "settings": {
+                    "marketType": "bitgetFutures",
+                    "interval": "1h",
+                    "limit": 500,
+                    "momStart": 2,
+                    "momEnd": 52,
+                    "zLength": 52,
+                    "extThresh": 2,
+                    "smoothLen": 8,
+                },
+                "enabled_symbols": ["MONUSDT", "BTCUSDT"],
+                "baseline": {"MONUSDT": 1000, "BTCUSDT": 1000},
+                "sent_signal_keys": [],
+                "sent_signal_channel_keys": [],
+            }
+            atomic_write_json(monitor_path, monitor)
+            marker = {
+                "time": 2000,
+                "text": "试探逃顶",
+                "score": 2.1,
+                "close": 100.0,
+            }
+
+            with (
+                mock.patch.object(jt_regime_worker, "MONITOR_FILE", monitor_path),
+                mock.patch.object(jt_regime_worker, "WORKER_STATUS_FILE", status_path),
+                mock.patch.object(
+                    jt_regime_worker,
+                    "fetch_remote_klines",
+                    side_effect=[
+                        RuntimeError("upstream unavailable"),
+                        RuntimeError("upstream unavailable"),
+                        RuntimeError("upstream unavailable"),
+                        [["row"]],
+                    ],
+                ),
+                mock.patch.object(jt_regime_worker.time, "sleep"),
+                mock.patch.object(jt_regime_worker, "rows_to_candles", return_value=[{"time": 2000}]),
+                mock.patch.object(jt_regime_worker, "closed_candles", return_value=[{"time": 2000}]),
+                mock.patch.object(jt_regime_worker, "calculate_jt_regime_oscillator", return_value=[]),
+                mock.patch.object(jt_regime_worker, "build_signal_markers", return_value=[marker]),
+                mock.patch.object(jt_regime_worker, "configured_notification_channels", return_value=["wecom", "electricwave"]),
+                mock.patch.object(
+                    jt_regime_worker,
+                    "send_notification",
+                    return_value={"wecom": {"ok": True}, "electricwave": {"ok": True}},
+                ) as send_notification,
+            ):
+                jt_regime_worker.scan_once(now=3000)
+
+            self.assertEqual(send_notification.call_count, 2)
+            self.assertEqual(send_notification.call_args_list[0].kwargs["title"], "JT 行情获取失败 MONUSDT")
+            self.assertEqual(send_notification.call_args_list[1].kwargs["title"], "试探逃顶 BTCUSDT")
+            updated_monitor = read_json_file(monitor_path, {})
+            self.assertEqual(
+                updated_monitor["sent_signal_keys"],
+                ["bitgetFutures:BTCUSDT:1h:2000:试探逃顶"],
+            )
+            self.assertIn("MONUSDT", updated_monitor["fetch_failure_notified"])
+            status = read_json_file(status_path, {})
+            self.assertEqual(status["state"], "warning")
+            self.assertEqual(status["symbol_errors"][0]["symbol"], "MONUSDT")
+
+    def test_worker_silences_fetch_failure_until_next_success(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            monitor_path = Path(tmpdir) / "monitor.json"
+            status_path = Path(tmpdir) / "worker-status.json"
+            monitor = {
+                "settings": {
+                    "marketType": "bitgetFutures",
+                    "interval": "1h",
+                    "limit": 500,
+                    "momStart": 2,
+                    "momEnd": 52,
+                    "zLength": 52,
+                    "extThresh": 2,
+                    "smoothLen": 8,
+                },
+                "enabled_symbols": ["MONUSDT"],
+                "baseline": {"MONUSDT": 1000},
+                "sent_signal_keys": [],
+                "sent_signal_channel_keys": [],
+            }
+            atomic_write_json(monitor_path, monitor)
+
+            with (
+                mock.patch.object(jt_regime_worker, "MONITOR_FILE", monitor_path),
+                mock.patch.object(jt_regime_worker, "WORKER_STATUS_FILE", status_path),
+                mock.patch.object(jt_regime_worker.time, "sleep"),
+                mock.patch.object(
+                    jt_regime_worker,
+                    "fetch_remote_klines",
+                    side_effect=[
+                        RuntimeError("first failure"),
+                        RuntimeError("first failure"),
+                        RuntimeError("first failure"),
+                        RuntimeError("second failure"),
+                        RuntimeError("second failure"),
+                        RuntimeError("second failure"),
+                        [["row"]],
+                        RuntimeError("third failure"),
+                        RuntimeError("third failure"),
+                        RuntimeError("third failure"),
+                    ],
+                ),
+                mock.patch.object(jt_regime_worker, "rows_to_candles", return_value=[{"time": 2000}]),
+                mock.patch.object(jt_regime_worker, "closed_candles", return_value=[{"time": 2000}]),
+                mock.patch.object(jt_regime_worker, "calculate_jt_regime_oscillator", return_value=[]),
+                mock.patch.object(jt_regime_worker, "build_signal_markers", return_value=[]),
+                mock.patch.object(
+                    jt_regime_worker,
+                    "send_notification",
+                    return_value={"wecom": {"ok": True}, "electricwave": {"ok": True}},
+                ) as send_notification,
+            ):
+                jt_regime_worker.scan_once(now=3000)
+                jt_regime_worker.scan_once(now=3015)
+                self.assertIn("MONUSDT", read_json_file(monitor_path, {})["fetch_failure_notified"])
+
+                jt_regime_worker.scan_once(now=3030)
+                self.assertEqual(read_json_file(monitor_path, {})["fetch_failure_notified"], {})
+
+                jt_regime_worker.scan_once(now=3045)
+
+            self.assertEqual(
+                [call.kwargs["title"] for call in send_notification.call_args_list],
+                ["JT 行情获取失败 MONUSDT", "JT 行情获取失败 MONUSDT"],
+            )
 
 
 if __name__ == "__main__":

@@ -192,6 +192,9 @@ def build_monitor_config(payload):
     sent_signal_channel_keys = previous.get("sent_signal_channel_keys", [])
     if not isinstance(sent_signal_channel_keys, list):
         sent_signal_channel_keys = []
+    fetch_failure_notified = previous.get("fetch_failure_notified", {})
+    if not isinstance(fetch_failure_notified, dict):
+        fetch_failure_notified = {}
 
     return {
         "version": 1,
@@ -202,6 +205,11 @@ def build_monitor_config(payload):
         "baseline": baseline,
         "sent_signal_keys": sent_signal_keys[-1000:],
         "sent_signal_channel_keys": sent_signal_channel_keys[-2000:],
+        "fetch_failure_notified": {
+            symbol: fetch_failure_notified[symbol]
+            for symbol in enabled_symbols
+            if symbol in fetch_failure_notified
+        },
     }
 
 
@@ -244,6 +252,7 @@ def summarize_monitor(monitor):
         "enabled_symbols": monitor.get("enabled_symbols", []),
         "sent_signal_count": len(monitor.get("sent_signal_keys", [])),
         "sent_signal_channel_count": len(monitor.get("sent_signal_channel_keys", [])),
+        "fetch_failure_silenced": sorted((monitor.get("fetch_failure_notified") or {}).keys()),
         "baseline": monitor.get("baseline", {}),
     }
 
