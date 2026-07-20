@@ -41,5 +41,7 @@ body,
   inset: 0;
   width: 100%;
   height: 100%;
+  /* Lightweight Charts 4.2.3 uses internal canvas layers 1 and 2. */
+  z-index: 3;
   pointer-events: none;
 }

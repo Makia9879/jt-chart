@@ -25,6 +25,27 @@
       .format(new Date(Number(time) * 1000));
   }
 
+  function finiteZIndex(style) {
+    const value = Number(style && style.zIndex);
+    return Number.isInteger(value) ? value : null;
+  }
+
+  function assertOverlayLayering(overlayCanvas, priceContainer, readComputedStyle) {
+    if (typeof readComputedStyle !== "function" || typeof priceContainer.querySelectorAll !== "function") return;
+    const overlayStyle = readComputedStyle(overlayCanvas);
+    const overlayZIndex = finiteZIndex(overlayStyle);
+    const chartZIndexes = Array.from(priceContainer.querySelectorAll("canvas"))
+      .map((canvas) => finiteZIndex(readComputedStyle(canvas)))
+      .filter((value) => value != null);
+    const highestChartZIndex = Math.max(2, ...chartZIndexes);
+    if (overlayZIndex == null || overlayZIndex <= highestChartZIndex) {
+      throw new Error(`bear_overlay_layering:${String(overlayStyle && overlayStyle.zIndex)}<=${highestChartZIndex}`);
+    }
+    if (!overlayStyle || overlayStyle.pointerEvents !== "none") {
+      throw new Error("bear_overlay_pointer_events");
+    }
+  }
+
   function createChartRenderer(dependencies) {
     const {
       LightweightCharts,
@@ -33,6 +54,9 @@
       overlayCanvas,
       ResizeObserver,
       requestAnimationFrame,
+      getComputedStyle: readComputedStyle = typeof globalThis.getComputedStyle === "function"
+        ? globalThis.getComputedStyle.bind(globalThis)
+        : null,
     } = dependencies;
     let priceChart;
     let oscillatorChart;
@@ -107,6 +131,7 @@
       oscillatorChart = LightweightCharts.createChart(oscillatorContainer, chartOptions(oscillatorContainer, {
         rightPriceScale: { borderColor: "#2c323c", scaleMargins: { top: 0.12, bottom: 0.12 } },
       }));
+      assertOverlayLayering(overlayCanvas, priceContainer, readComputedStyle);
       candleSeries = priceChart.addCandlestickSeries({
         upColor: "#00b050", downColor: "#ff3b30",
         borderUpColor: "#00b050", borderDownColor: "#ff3b30",
@@ -354,5 +379,5 @@
     };
   }
 
-  return { createChartRenderer };
+  return { assertOverlayLayering, createChartRenderer };
 });
